@@ -100,6 +100,81 @@ def get_subtree_graph(
     )
 
 
+@router.get("/graph/mi-network", response_model=GraphResponse)
+def get_mi_network(
+    db: Session = Depends(get_db),
+) -> GraphResponse:
+    """Get the full MI similarity network: all species with MI edges.
+
+    Returns all taxa that have at least one MI edge, plus all MI edges
+    between them (deduplicated to undirected). Includes taxonomy edges
+    connecting species to their parent genus.
+    """
+    # Get all MI edges
+    all_edges = db.query(Edge).all()
+    if not all_edges:
+        return GraphResponse(nodes=[], edges=[])
+
+    # Collect all involved OTT IDs
+    ott_ids: set[int] = set()
+    for e in all_edges:
+        ott_ids.add(e.src_ott_id)
+        ott_ids.add(e.dst_ott_id)
+
+    # Fetch taxa in one query
+    taxa = db.query(Taxon).filter(Taxon.ott_id.in_(ott_ids)).all()
+    taxa_map = {t.ott_id: t for t in taxa}
+
+    # Fetch media in one query
+    media_rows = db.query(NodeMedia).filter(NodeMedia.ott_id.in_(ott_ids)).all()
+    media_map = {m.ott_id: m.image_url for m in media_rows}
+
+    # Build MI edges — deduplicate to undirected (keep the one with lower distance
+    # when both A->B and B->A exist, otherwise keep the single direction)
+    seen_pairs: dict[tuple[int, int], float] = {}
+    for e in all_edges:
+        pair = (min(e.src_ott_id, e.dst_ott_id), max(e.src_ott_id, e.dst_ott_id))
+        if pair not in seen_pairs or e.distance < seen_pairs[pair]:
+            seen_pairs[pair] = e.distance
+
+    mi_edges = [
+        GraphEdge(src=a, dst=b, kind="mi", distance=dist)
+        for (a, b), dist in seen_pairs.items()
+    ]
+
+    # Add taxonomy edges: connect species to their parent genus/family
+    # Batch-fetch all parent taxa in one query (no N+1)
+    parent_ids = {
+        t.parent_ott_id
+        for t in taxa_map.values()
+        if t.parent_ott_id and t.parent_ott_id not in taxa_map
+    }
+    if parent_ids:
+        parents = db.query(Taxon).filter(Taxon.ott_id.in_(parent_ids)).all()
+        for p in parents:
+            taxa_map[p.ott_id] = p
+
+    taxonomy_edges = []
+    for ott_id in ott_ids:
+        t = taxa_map.get(ott_id)
+        if t and t.parent_ott_id and t.parent_ott_id in taxa_map:
+            taxonomy_edges.append(
+                GraphEdge(src=t.parent_ott_id, dst=ott_id, kind="taxonomy", distance=None)
+            )
+
+    nodes = [
+        Node(
+            ott_id=t.ott_id,
+            name=t.name,
+            rank=t.rank,
+            image_url=media_map.get(t.ott_id),
+        )
+        for t in taxa_map.values()
+    ]
+
+    return GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
+
+
 @router.get("/graph/neighbors/{ott_id}", response_model=list[NeighborOut])
 def get_neighbors(
     ott_id: int,

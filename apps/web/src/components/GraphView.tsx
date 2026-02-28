@@ -11,17 +11,18 @@ cytoscape.use(fcose);
 interface GraphViewProps {
   graph: GraphResponse;
   height?: number | string;
+  layout?: "force" | "radial";
   onNodeDoubleClick?: (ottId: number) => void;
 }
 
 const RANK_SIZE: Record<string, number> = {
-  class: 40,
-  order: 36,
-  family: 32,
-  subfamily: 28,
-  genus: 24,
-  species: 18,
-  subspecies: 16,
+  class: 22,
+  order: 16,
+  family: 12,
+  subfamily: 10,
+  genus: 8,
+  species: 6,
+  subspecies: 5,
 };
 
 const RANK_COLOR: Record<string, string> = {
@@ -34,17 +35,14 @@ const RANK_COLOR: Record<string, string> = {
   subspecies: "#f48fb1",
 };
 
-const LEGEND_RANKS = ["class", "order", "family", "genus", "species", "subspecies"] as const;
+const LEGEND_RANKS = ["class", "order", "family", "genus", "species"] as const;
 
-function getRankSize(rank: string): number {
-  return RANK_SIZE[rank] ?? 22;
-}
-
-function getRankColor(rank: string): string {
-  return RANK_COLOR[rank] ?? "#4fc3f7";
-}
-
-export default function GraphView({ graph, height = 600, onNodeDoubleClick }: GraphViewProps) {
+export default function GraphView({
+  graph,
+  height = 600,
+  layout = "force",
+  onNodeDoubleClick,
+}: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const router = useRouter();
@@ -71,105 +69,192 @@ export default function GraphView({ graph, height = 600, onNodeDoubleClick }: Gr
       })),
     ];
 
+    const hasMiEdges = graph.edges.some((e) => e.kind === "mi");
+
+    // Rank-specific selectors for node coloring via stylesheet
+    const rankStyles: cytoscape.Stylesheet[] = Object.entries(RANK_COLOR).map(
+      ([rank, color]) => ({
+        selector: `node[rank="${rank}"]`,
+        style: {
+          "background-color": color,
+          width: RANK_SIZE[rank] ?? 6,
+          height: RANK_SIZE[rank] ?? 6,
+        } as cytoscape.Css.Node,
+      })
+    );
+
+    // Always-visible labels for higher-rank nodes
+    const labelStyles: cytoscape.Stylesheet[] = [
+      {
+        selector: 'node[rank="class"], node[rank="order"], node[rank="family"]',
+        style: {
+          label: "data(label)",
+          "font-size": 9,
+          color: "#ccc",
+          "text-outline-color": "#000",
+          "text-outline-width": 1.5,
+          "text-valign": "top",
+          "text-margin-y": -4,
+        } as cytoscape.Css.Node,
+      },
+    ];
+
+    const layoutConfig =
+      layout === "radial"
+        ? {
+            name: "breadthfirst",
+            ...({
+              directed: true,
+              circle: true,
+              spacingFactor: 1.2,
+              maximal: true,
+              animate: false,
+            } as Record<string, unknown>),
+          }
+        : {
+            name: "fcose",
+            ...({
+              animate: false,
+              quality: "proof",
+              nodeDimensionsIncludeLabels: false,
+              idealEdgeLength: hasMiEdges ? 80 : 150,
+              nodeRepulsion: hasMiEdges ? 8000 : 40000,
+              edgeElasticity: 0.2,
+              gravity: 0.3,
+              gravityRange: 2.0,
+              numIter: 5000,
+            } as Record<string, unknown>),
+          };
+
     const cy = cytoscape({
       container: containerRef.current,
       elements,
       style: [
+        // Default node style
         {
           selector: "node",
           style: {
             label: "",
             "background-color": "#4fc3f7",
-            width: "data(rank)",
-            height: "data(rank)",
-            "border-width": 1,
-            "border-color": "#333",
+            width: 6,
+            height: 6,
+            "border-width": 0,
           } as cytoscape.Css.Node,
         },
+        // Rank-specific styles
+        ...rankStyles,
+        // Labels for high-rank nodes
+        ...labelStyles,
+        // Taxonomy edges: thin structural skeleton
         {
           selector: "edge[kind='taxonomy']",
           style: {
             "line-color": "#555",
-            "line-style": "dashed",
-            opacity: 0.4,
-            width: 1,
-            "curve-style": "bezier",
+            "line-style": "solid",
+            opacity: hasMiEdges ? 0.12 : 0.5,
+            width: hasMiEdges ? 0.5 : 1,
+            "curve-style": "haystack",
           } as cytoscape.Css.Edge,
         },
+        // MI similarity edges: colored arcs
         {
           selector: "edge[kind='mi']",
           style: {
             "line-color": "#4fc3f7",
             "line-style": "solid",
-            opacity: 0.8,
-            width: 2,
-            "curve-style": "bezier",
+            opacity: 0.25,
+            width: 1,
+            "curve-style": "haystack",
           } as cytoscape.Css.Edge,
         },
       ],
-      layout: {
-        name: "fcose",
-        ...({
-          animate: true,
-          animationDuration: 500,
-          nodeDimensionsIncludeLabels: true,
-          idealEdgeLength: 100,
-          nodeRepulsion: 6000,
-        } as Record<string, unknown>),
-      },
-      minZoom: 0.2,
-      maxZoom: 4,
-    });
+      layout: layoutConfig,
+      minZoom: 0.1,
+      maxZoom: 8,
+      pixelRatio: 1,
+      hideEdgesOnViewport: graph.edges.length > 500,
+      textureOnViewport: graph.edges.length > 500,
+    } as cytoscape.CytoscapeOptions);
 
-    // Apply rank-based node sizing and coloring
-    cy.nodes().forEach((node) => {
-      const rank = node.data("rank");
-      const size = getRankSize(rank);
-      node.style({ width: size, height: size, "background-color": getRankColor(rank) });
-    });
+    // Apply MI edge width based on distance
+    if (hasMiEdges) {
+      cy.edges("[kind='mi']").forEach((edge) => {
+        const dist = edge.data("distance") as number | null;
+        if (dist != null) {
+          // Closer = thicker + more opaque + bluer
+          const t = Math.min(Math.max(dist, 0), 1);
+          const w = Math.max(0.5, 2.5 * (1 - t));
+          const op = 0.15 + 0.35 * (1 - t);
+          // Blue (close) to red (far)
+          const r = Math.round(79 + t * 160);
+          const g = Math.round(195 - t * 150);
+          const b = Math.round(247 - t * 200);
+          edge.style({
+            width: w,
+            opacity: op,
+            "line-color": `rgb(${r},${g},${b})`,
+          });
+        }
+      });
+    }
 
-    // Apply MI edge coloring and width based on distance
-    cy.edges("[kind='mi']").forEach((edge) => {
-      const dist = edge.data("distance") as number | null;
-      const w = dist != null ? Math.max(1, 4 * (1 - dist)) : 2;
-      edge.style({ width: w });
-    });
-
-    // Show label on hover with halo for readability
+    // Hover: show label + highlight edges
     cy.on("mouseover", "node", (evt) => {
-      evt.target.style({
-        label: evt.target.data("label"),
-        "font-size": 12,
-        color: "#ededed",
+      const node = evt.target;
+      node.style({
+        label: node.data("label"),
+        "font-size": 11,
+        color: "#fff",
         "text-outline-color": "#000",
         "text-outline-width": 2,
         "text-valign": "top",
-        "text-margin-y": -8,
+        "text-margin-y": -6,
+        "z-index": 999,
       });
+      // Brighten connected MI edges
+      node.connectedEdges("[kind='mi']").style({ opacity: 0.7, width: 2 });
+      node.connectedEdges("[kind='taxonomy']").style({ opacity: 0.4, width: 1 });
     });
     cy.on("mouseout", "node", (evt) => {
-      evt.target.style({ label: "" });
+      const node = evt.target;
+      const rank = node.data("rank");
+      const isHighRank = ["class", "order", "family"].includes(rank);
+      if (!isHighRank) {
+        node.style({ label: "" });
+      } else {
+        node.style({ "font-size": 9, color: "#ccc" });
+      }
+      node.connectedEdges("[kind='mi']").forEach((edge: cytoscape.EdgeSingular) => {
+        const dist = edge.data("distance") as number | null;
+        const t = dist != null ? Math.min(Math.max(dist, 0), 1) : 0.5;
+        edge.style({ opacity: 0.15 + 0.35 * (1 - t), width: Math.max(0.5, 2.5 * (1 - t)) });
+      });
+      node.connectedEdges("[kind='taxonomy']").style({
+        opacity: hasMiEdges ? 0.12 : 0.5,
+        width: hasMiEdges ? 0.5 : 1,
+      });
     });
 
-    // Single click: navigate to taxon detail
+    // Click: navigate
     cy.on("tap", "node", (evt) => {
-      const ottId = evt.target.id();
-      router.push(`/taxa/${ottId}`);
+      router.push(`/taxa/${evt.target.id()}`);
     });
 
-    // Double-click: re-root callback
+    // Double-click: re-root
     if (onNodeDoubleClick) {
       cy.on("dbltap", "node", (evt) => {
         onNodeDoubleClick(Number(evt.target.id()));
       });
     }
 
-    cyRef.current = cy;
+    // Fit after layout
+    cy.on("layoutstop", () => {
+      cy.fit(undefined, 30);
+    });
 
-    return () => {
-      cy.destroy();
-    };
-  }, [graph, router, onNodeDoubleClick]);
+    cyRef.current = cy;
+    return () => { cy.destroy(); };
+  }, [graph, router, layout, onNodeDoubleClick]);
 
   return (
     <div>
@@ -178,31 +263,41 @@ export default function GraphView({ graph, height = 600, onNodeDoubleClick }: Gr
         style={{
           width: "100%",
           height,
-          background: "var(--bg-card)",
+          background: "#0a0a0a",
           border: "1px solid var(--border)",
           borderRadius: "var(--radius)",
         }}
       />
       <div style={{
         display: "flex",
-        gap: "1rem",
+        gap: "0.75rem",
         padding: "0.5rem 0",
         flexWrap: "wrap",
-        fontSize: "0.75rem",
-        color: "#aaa",
+        fontSize: "0.7rem",
+        color: "#666",
+        alignItems: "center",
       }}>
         {LEGEND_RANKS.map((rank) => (
-          <span key={rank} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+          <span key={rank} style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
             <span style={{
               display: "inline-block",
-              width: 10,
-              height: 10,
+              width: 8,
+              height: 8,
               borderRadius: "50%",
               background: RANK_COLOR[rank],
             }} />
             {rank}
           </span>
         ))}
+        <span style={{ color: "#444", margin: "0 0.25rem" }}>|</span>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+          <span style={{ display: "inline-block", width: 14, height: 1, background: "#555" }} />
+          taxonomy
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+          <span style={{ display: "inline-block", width: 14, height: 2, background: "#4fc3f7", opacity: 0.6 }} />
+          MI similarity
+        </span>
       </div>
     </div>
   );

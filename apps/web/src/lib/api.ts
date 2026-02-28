@@ -24,6 +24,10 @@ export function getSubtreeGraph(ottId: number, depth = 1) {
   return getJSON<GraphResponse>(`/v1/graph/subtree/${ottId}?depth=${depth}`);
 }
 
+export function getMiNetwork() {
+  return getJSON<GraphResponse>(`/v1/graph/mi-network`);
+}
+
 export function getNeighbors(ottId: number, k = 15) {
   return getJSON<NeighborOut[]>(`/v1/graph/neighbors/${ottId}?k=${k}`);
 }

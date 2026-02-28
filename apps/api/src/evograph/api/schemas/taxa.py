@@ -1,9 +1,13 @@
 from pydantic import BaseModel
 
+
 class TaxonSummary(BaseModel):
     ott_id: int
     name: str
     rank: str
+    child_count: int = 0
+    image_url: str | None = None
+
 
 class TaxonDetail(BaseModel):
     ott_id: int
@@ -15,3 +19,5 @@ class TaxonDetail(BaseModel):
     children: list[TaxonSummary] = []
     has_canonical_sequence: bool = False
     image_url: str | None = None
+    lineage: list[TaxonSummary] = []
+    wikipedia_url: str | None = None

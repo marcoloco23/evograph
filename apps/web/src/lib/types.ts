@@ -2,6 +2,8 @@ export interface TaxonSummary {
   ott_id: number;
   name: string;
   rank: string;
+  child_count: number;
+  image_url: string | null;
 }
 
 export interface TaxonDetail extends TaxonSummary {
@@ -11,6 +13,8 @@ export interface TaxonDetail extends TaxonSummary {
   children: TaxonSummary[];
   has_canonical_sequence: boolean;
   image_url: string | null;
+  lineage: TaxonSummary[];
+  wikipedia_url: string | null;
 }
 
 export interface SequenceOut {

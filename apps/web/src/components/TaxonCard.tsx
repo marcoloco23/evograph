@@ -1,46 +1,38 @@
 import Link from "next/link";
 import type { TaxonSummary } from "@/lib/types";
 
-interface TaxonCardProps extends TaxonSummary {
-  image_url?: string | null;
-}
+const RANK_COLORS: Record<string, string> = {
+  class: "#e57373",
+  order: "#ffb74d",
+  family: "#fff176",
+  subfamily: "#dce775",
+  genus: "#81c784",
+  species: "#4fc3f7",
+  subspecies: "#4dd0e1",
+};
 
-export default function TaxonCard({ ott_id, name, rank, image_url }: TaxonCardProps) {
+export default function TaxonCard({ ott_id, name, rank, child_count, image_url }: TaxonSummary) {
   const isSpecies = rank === "species" || rank === "subspecies";
+  const accent = RANK_COLORS[rank] ?? "#888";
 
   return (
     <Link href={`/taxa/${ott_id}`} style={{ textDecoration: "none", color: "inherit" }}>
-      <div className="card" style={cardStyle}>
+      <div className="card taxon-card" style={{ borderLeftColor: accent }}>
         {image_url && (
-          <img
-            src={image_url}
-            alt={name}
-            style={imageStyle}
-          />
+          <img src={image_url} alt={name} className="taxon-card-img" />
         )}
         <div>
-          <div style={isSpecies ? { fontStyle: "italic", fontSize: "1.05rem" } : { fontSize: "1.05rem" }}>
+          <div className={isSpecies ? "italic taxon-card-name" : "taxon-card-name"}>
             {name}
           </div>
-          <span className="badge" style={{ marginTop: "0.35rem" }}>{rank}</span>
+          <div className="flex gap-sm" style={{ alignItems: "center", marginTop: "0.25rem" }}>
+            <span className="badge" style={{ background: accent, color: "#000" }}>{rank}</span>
+            {child_count > 0 && (
+              <span className="taxon-card-count">{child_count}</span>
+            )}
+          </div>
         </div>
       </div>
     </Link>
   );
 }
-
-const cardStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.75rem",
-  cursor: "pointer",
-  transition: "border-color 0.15s",
-};
-
-const imageStyle: React.CSSProperties = {
-  width: 48,
-  height: 48,
-  borderRadius: "50%",
-  objectFit: "cover",
-  background: "#222",
-};
