@@ -1,4 +1,4 @@
-import type { TaxonSummary, TaxonDetail, GraphResponse, NeighborOut } from "./types";
+import type { TaxonSummary, TaxonDetail, GraphResponse, NeighborOut, SequenceOut } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -30,4 +30,8 @@ export function getMiNetwork() {
 
 export function getNeighbors(ottId: number, k = 15) {
   return getJSON<NeighborOut[]>(`/v1/graph/neighbors/${ottId}?k=${k}`);
+}
+
+export function getSequences(ottId: number) {
+  return getJSON<SequenceOut[]>(`/v1/taxa/${ottId}/sequences`);
 }
