@@ -8,23 +8,30 @@
 - [ ] Add NCBI taxonomy ID lookup — `ncbi_tax_id` column exists but is never populated. Add pipeline step to query NCBI Taxonomy by name and backfill
 
 ### Testing
-- [ ] API route tests — pytest + httpx TestClient for all 6 endpoints
-- [ ] Pipeline unit tests — test MI computation with known sequences, test canonical selection logic
+- [x] API route tests — pytest + httpx TestClient for all endpoints (42 tests)
+- [x] MI distance unit tests — entropy, MI computation, NMI clamping, distance conversion
+- [x] Pipeline unit tests — canonical selection scoring logic (11 tests)
 - [ ] Frontend smoke tests — basic render tests for key pages
 
 ### Performance
-- [ ] Cache MI network endpoint — the full graph loads all edges every request. Add Redis or in-memory caching with TTL
-- [ ] Add DB indexes on `edges(src_ott_id, dst_ott_id)` if not already present
-- [ ] Paginate children for large taxa (Aves has 729 direct children)
+- [x] Cache MI network endpoint — in-memory cache with 5-minute TTL
+- [x] Performance indexes (migration 002) — pg_trgm, composite indexes for neighbors/canonical/search
+- [x] Paginate children for large taxa — inline limit of 100, dedicated `/taxa/{id}/children` endpoint with offset/limit
+- [x] Connection pooling — 10 persistent + 20 overflow, pre-ping, 5min recycle
+- [x] Recursive CTE for lineage — single query replaces N+1 parent chain walk
+- [x] Recursive CTE for subtree — single query replaces Python BFS with per-level queries
+- [x] GZip compression — middleware compresses responses > 500 bytes
+- [x] Search optimization — pg_trgm GIN index + prefix ranking + LIKE pattern escaping
+- [x] EXISTS for canonical check — replaces fetching full row
 
 ## Medium Priority
 
 ### Frontend Polish
-- [ ] Add `getSequences()` to frontend API client — endpoint exists but no client function
-- [ ] Sequence viewer page — show aligned sequences for a species, highlight conserved regions
-- [ ] Mobile responsive layout — test and fix breakpoints
-- [ ] Loading skeletons instead of plain "Loading..." text
-- [ ] Graph page: add node search/filter within the MI network
+- [x] Add `getSequences()` to frontend API client
+- [x] Sequence viewer page — color-coded DNA bases, composition bar, expandable cards
+- [x] Mobile responsive layout — breakpoints at 768px and 480px
+- [x] Loading skeletons — shimmer animation for taxon detail and graph pages
+- [x] Graph page: node search/filter within the MI network — autocomplete dropdown with camera animation
 
 ### Data Quality
 - [ ] Run `validate.py` and document results — what % of neighbors share genus/family?
@@ -32,8 +39,9 @@
 - [ ] Deduplicate sequences — check for identical accessions from multiple sources
 
 ### DevOps
-- [ ] Add Dockerfile health checks
-- [ ] CI pipeline (GitHub Actions) — lint, typecheck, test
+- [x] Add Dockerfile health checks — API (Python urllib), Web (Node fetch), DB (pg_isready), Redis (redis-cli ping)
+- [x] CI pipeline (GitHub Actions) — lint, typecheck, test, build
+- [x] Fix lint warnings — removed unused imports, fixed f-string, removed unused variable
 - [ ] Production deployment config (fly.io, Railway, or VPS)
 
 ## Phase 2 (from ROADMAP.md)

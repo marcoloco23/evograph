@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Double,
     ForeignKey,
+    Index,
     Integer,
     PrimaryKeyConstraint,
     Text,
@@ -28,7 +29,7 @@ class Taxon(Base):
 
     ott_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(Text, index=True)
-    rank: Mapped[str] = mapped_column(Text)
+    rank: Mapped[str] = mapped_column(Text, index=True)
     parent_ott_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("taxa.ott_id"), nullable=True, index=True
     )
@@ -79,6 +80,7 @@ class Edge(Base):
     __tablename__ = "edges"
     __table_args__ = (
         PrimaryKeyConstraint("src_ott_id", "dst_ott_id", "marker"),
+        Index("ix_edges_src_distance", "src_ott_id", "distance"),
     )
 
     src_ott_id: Mapped[int] = mapped_column(

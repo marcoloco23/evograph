@@ -15,7 +15,7 @@ import time
 import httpx
 from sqlalchemy import select, text
 
-from evograph.db.models import NodeMedia, Taxon
+from evograph.db.models import NodeMedia
 from evograph.db.session import engine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

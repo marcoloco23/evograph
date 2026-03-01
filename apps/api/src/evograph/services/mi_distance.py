@@ -51,9 +51,6 @@ def mi_from_alignment(aln: AlignmentResult) -> tuple[float, float, int]:
     y_counts: Counter[str] = Counter(y for _, y in columns)
 
     # Empirical distributions.
-    p_xy: dict[str, float] = {
-        f"{x},{y}": count / n for (x, y), count in joint_counts.items()
-    }
     p_x: dict[str, float] = {x: count / n for x, count in x_counts.items()}
     p_y: dict[str, float] = {y: count / n for y, count in y_counts.items()}
 

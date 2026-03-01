@@ -72,7 +72,7 @@ export default function GraphView({
     const hasMiEdges = graph.edges.some((e) => e.kind === "mi");
 
     // Rank-specific selectors for node coloring via stylesheet
-    const rankStyles: cytoscape.Stylesheet[] = Object.entries(RANK_COLOR).map(
+    const rankStyles: cytoscape.StylesheetStyle[] = Object.entries(RANK_COLOR).map(
       ([rank, color]) => ({
         selector: `node[rank="${rank}"]`,
         style: {
@@ -84,7 +84,7 @@ export default function GraphView({
     );
 
     // Always-visible labels for higher-rank nodes
-    const labelStyles: cytoscape.Stylesheet[] = [
+    const labelStyles: cytoscape.StylesheetStyle[] = [
       {
         selector: 'node[rank="class"], node[rank="order"], node[rank="family"]',
         style: {

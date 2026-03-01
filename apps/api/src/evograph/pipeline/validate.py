@@ -130,7 +130,7 @@ def validate() -> None:
         if len(distances) >= 2:
             print(f"  StdDev: {statistics.stdev(distances):.4f}")
 
-        print(f"\nOutliers:")
+        print("\nOutliers:")
         print(
             f"  Distance < 0.05 across families: {len(outliers_low)}"
         )

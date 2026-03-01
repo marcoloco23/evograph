@@ -1,9 +1,9 @@
 """Graph endpoints: subtree and MI-neighbor queries."""
 
-from collections import deque
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, text
 from sqlalchemy.orm import Session
 
 from evograph.api.schemas.graph import GraphEdge, GraphResponse, NeighborOut, Node
@@ -11,6 +11,11 @@ from evograph.db.models import Edge, NodeMedia, Taxon
 from evograph.db.session import get_db
 
 router = APIRouter(tags=["graph"])
+
+# ── In-memory cache for MI network (expensive query) ──────
+_mi_network_cache: GraphResponse | None = None
+_mi_network_cache_time: float = 0.0
+_MI_NETWORK_TTL: float = 300.0  # 5 minutes
 
 
 @router.get("/graph/subtree/{ott_id}", response_model=GraphResponse)
@@ -21,39 +26,47 @@ def get_subtree_graph(
 ) -> GraphResponse:
     """Get a graph containing the taxonomy subtree + MI edges among those nodes.
 
-    Walk down from ott_id collecting descendants up to `depth` levels.
-    Include taxonomy edges (parent->child) and MI edges between nodes in the set.
+    Uses a recursive CTE to collect all descendants in a single query,
+    replacing the previous Python-side BFS that issued one query per level.
     """
     root = db.query(Taxon).filter(Taxon.ott_id == ott_id).first()
     if root is None:
         raise HTTPException(status_code=404, detail="Taxon not found")
 
-    # BFS to collect descendants up to `depth` levels
-    collected: dict[int, Taxon] = {root.ott_id: root}
+    # Recursive CTE: fetch entire subtree in one query
+    subtree_rows = db.execute(
+        text("""
+            WITH RECURSIVE subtree AS (
+                SELECT ott_id, name, rank, parent_ott_id, 0 AS depth
+                FROM taxa
+                WHERE ott_id = :root_id
+                UNION ALL
+                SELECT t.ott_id, t.name, t.rank, t.parent_ott_id, s.depth + 1
+                FROM taxa t
+                JOIN subtree s ON t.parent_ott_id = s.ott_id
+                WHERE s.depth < :max_depth
+            )
+            SELECT ott_id, name, rank, parent_ott_id, depth FROM subtree
+        """),
+        {"root_id": ott_id, "max_depth": depth},
+    ).fetchall()
+
+    # Build taxa dict and taxonomy edges from CTE results
+    # Always include the root (CTE may return empty in test environments)
+    taxa_info: dict[int, tuple[str, str]] = {
+        root.ott_id: (root.name, root.rank),
+    }
     taxonomy_edges: list[GraphEdge] = []
-    queue: deque[tuple[int, int]] = deque([(root.ott_id, 0)])
 
-    while queue:
-        current_id, current_depth = queue.popleft()
-        if current_depth >= depth:
-            continue
-        children = (
-            db.query(Taxon).filter(Taxon.parent_ott_id == current_id).all()
-        )
-        for child in children:
-            if child.ott_id not in collected:
-                collected[child.ott_id] = child
-                taxonomy_edges.append(
-                    GraphEdge(
-                        src=current_id,
-                        dst=child.ott_id,
-                        kind="taxonomy",
-                        distance=None,
-                    )
-                )
-                queue.append((child.ott_id, current_depth + 1))
+    for row in subtree_rows:
+        node_ott_id, name, rank, parent_ott_id, row_depth = row
+        taxa_info[node_ott_id] = (name, rank)
+        if row_depth > 0 and parent_ott_id in taxa_info:
+            taxonomy_edges.append(
+                GraphEdge(src=parent_ott_id, dst=node_ott_id, kind="taxonomy", distance=None)
+            )
 
-    ott_ids = list(collected.keys())
+    ott_ids = list(taxa_info.keys())
 
     # Fetch image URLs for all collected nodes
     media_rows = (
@@ -86,12 +99,12 @@ def get_subtree_graph(
 
     nodes = [
         Node(
-            ott_id=t.ott_id,
-            name=t.name,
-            rank=t.rank,
-            image_url=media_map.get(t.ott_id),
+            ott_id=node_ott_id,
+            name=name,
+            rank=rank,
+            image_url=media_map.get(node_ott_id),
         )
-        for t in collected.values()
+        for node_ott_id, (name, rank) in taxa_info.items()
     ]
 
     return GraphResponse(
@@ -109,7 +122,14 @@ def get_mi_network(
     Returns all taxa that have at least one MI edge, plus all MI edges
     between them (deduplicated to undirected). Includes taxonomy edges
     connecting species to their parent genus.
+
+    Results are cached in-memory for 5 minutes.
     """
+    global _mi_network_cache, _mi_network_cache_time
+    now = time.monotonic()
+    if _mi_network_cache is not None and (now - _mi_network_cache_time) < _MI_NETWORK_TTL:
+        return _mi_network_cache
+
     # Get all MI edges
     all_edges = db.query(Edge).all()
     if not all_edges:
@@ -172,7 +192,10 @@ def get_mi_network(
         for t in taxa_map.values()
     ]
 
-    return GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
+    result = GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
+    _mi_network_cache = result
+    _mi_network_cache_time = time.monotonic()
+    return result
 
 
 @router.get("/graph/neighbors/{ott_id}", response_model=list[NeighborOut])

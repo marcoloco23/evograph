@@ -33,6 +33,7 @@ def get_sequences(
             marker=s.marker,
             source=s.source,
             accession=s.accession,
+            sequence=s.sequence,
             length=s.length,
             is_canonical=s.is_canonical,
             retrieved_at=s.retrieved_at,
