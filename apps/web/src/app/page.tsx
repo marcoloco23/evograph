@@ -25,9 +25,9 @@ export default function HomePage() {
       </p>
       <SearchBox />
 
-      <div style={{ marginTop: "2.5rem" }}>
+      <div style={{ marginTop: "2.5rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <Link
-          href="/graph"
+          href="/browse"
           style={{
             display: "inline-block",
             padding: "0.6rem 1.5rem",
@@ -37,6 +37,22 @@ export default function HomePage() {
             fontWeight: 600,
             fontSize: "0.95rem",
             textDecoration: "none",
+          }}
+        >
+          Browse Species
+        </Link>
+        <Link
+          href="/graph"
+          style={{
+            display: "inline-block",
+            padding: "0.6rem 1.5rem",
+            background: "transparent",
+            color: "var(--accent)",
+            borderRadius: "var(--radius)",
+            fontWeight: 600,
+            fontSize: "0.95rem",
+            textDecoration: "none",
+            border: "1px solid var(--accent)",
           }}
         >
           Open Graph Explorer
