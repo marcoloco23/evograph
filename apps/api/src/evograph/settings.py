@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["*"]
     log_level: Literal["debug", "info", "warning", "error", "critical"] = "info"
     log_format: Literal["text", "json"] = "text"
+    ncbi_api_key: str | None = None
 
     model_config = {"env_prefix": "", "case_sensitive": False}
 

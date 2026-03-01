@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from evograph.db.models import Sequence, Taxon
 from evograph.db.session import SessionLocal
+from evograph.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _NON_ACGTN = re.compile(r"[^ACGTN]")
 MIN_SEQ_LEN = 400
 MAX_PER_SPECIES = 5
+
+# NCBI rate limit: 3 req/s without API key, 10 req/s with
+_RATE_DELAY = 0.1 if settings.ncbi_api_key else 0.4
 
 # Broader COI gene search terms — many GenBank entries use different annotations
 _COI_TERMS = (
@@ -54,15 +58,15 @@ async def _esearch(
     client: httpx.AsyncClient, query: str, max_seqs: int
 ) -> list[str]:
     """Run NCBI esearch and return list of GI/accession IDs."""
-    resp = await client.get(
-        f"{NCBI_BASE}/esearch.fcgi",
-        params={
-            "db": "nucleotide",
-            "term": query,
-            "retmax": max_seqs,
-            "retmode": "json",
-        },
-    )
+    params: dict[str, str | int] = {
+        "db": "nucleotide",
+        "term": query,
+        "retmax": max_seqs,
+        "retmode": "json",
+    }
+    if settings.ncbi_api_key:
+        params["api_key"] = settings.ncbi_api_key
+    resp = await client.get(f"{NCBI_BASE}/esearch.fcgi", params=params)
     resp.raise_for_status()
     data = resp.json()
     return data.get("esearchresult", {}).get("idlist", [])
@@ -72,15 +76,15 @@ async def _efetch_fasta(
     client: httpx.AsyncClient, id_list: list[str]
 ) -> list[dict]:
     """Fetch sequences in FASTA format and parse them."""
-    resp = await client.get(
-        f"{NCBI_BASE}/efetch.fcgi",
-        params={
-            "db": "nucleotide",
-            "id": ",".join(id_list),
-            "rettype": "fasta",
-            "retmode": "text",
-        },
-    )
+    params: dict[str, str] = {
+        "db": "nucleotide",
+        "id": ",".join(id_list),
+        "rettype": "fasta",
+        "retmode": "text",
+    }
+    if settings.ncbi_api_key:
+        params["api_key"] = settings.ncbi_api_key
+    resp = await client.get(f"{NCBI_BASE}/efetch.fcgi", params=params)
     resp.raise_for_status()
 
     records = []
@@ -124,7 +128,7 @@ async def _fetch_coi_sequences(
         if len(parts) >= 2:
             genus = parts[0]
             # NCBI rate limit pause before second request
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(_RATE_DELAY)
             query = _build_query(genus)
             id_list = await _esearch(client, query, max_seqs)
             if id_list:
@@ -137,7 +141,7 @@ async def _fetch_coi_sequences(
         return []
 
     # NCBI rate limit pause before fetch
-    await asyncio.sleep(0.4)
+    await asyncio.sleep(_RATE_DELAY)
     return await _efetch_fasta(client, id_list)
 
 
@@ -225,7 +229,7 @@ async def ingest(
                     )
 
                 # NCBI rate limit: max 3 requests/second without API key
-                await asyncio.sleep(0.4)
+                await asyncio.sleep(_RATE_DELAY)
 
             logger.info(
                 "NCBI ingestion complete. Sequences stored: %d, species covered: %d/%d",

@@ -12,6 +12,7 @@ build/
 # Data (large files)
 data/raw/
 data/processed/
+data/*.pgdump
 
 # Environment
 .env

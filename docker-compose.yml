@@ -31,7 +31,27 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/evograph
       REDIS_URL: redis://redis:6379/0
       SCOPE_OTT_ROOT: ${SCOPE_OTT_ROOT:-Aves}
+      NCBI_API_KEY: ${NCBI_API_KEY:-}
     ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/src:/app/src
+      - ./data:/app/data
+
+  worker:
+    build:
+      context: ./apps/api
+      target: dev
+    command: celery -A evograph.worker worker --loglevel=info --concurrency=1
+    working_dir: /app/src
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/evograph
+      REDIS_URL: redis://redis:6379/0
+      NCBI_API_KEY: ${NCBI_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

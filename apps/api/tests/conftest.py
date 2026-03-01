@@ -123,6 +123,9 @@ class MockQuery:
             return False
         return 0
 
+    def count(self):
+        return len(self._results)
+
     def all(self):
         return self._results
 

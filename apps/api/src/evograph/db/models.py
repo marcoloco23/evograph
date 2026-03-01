@@ -106,3 +106,20 @@ class NodeMedia(Base):
     )
     image_url: Mapped[str] = mapped_column(Text)
     attribution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    step: Mapped[str] = mapped_column(Text, index=True)
+    scope: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True, default="pending")
+    progress: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    celery_task_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

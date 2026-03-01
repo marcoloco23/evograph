@@ -46,3 +46,20 @@ class OpenTreeClient:
             )
             resp.raise_for_status()
             return resp.json()
+
+    async def taxon_children(self, ott_id: int) -> list[dict]:
+        """Get direct children of a taxon.
+
+        Returns list of child dicts with 'ott_id', 'name', 'rank' keys.
+        Uses taxon_info which includes children in the response.
+        """
+        info = await self.taxon_info(ott_id)
+        children = info.get("children", [])
+        return [
+            {
+                "ott_id": c["ott_id"],
+                "name": c.get("unique_name", c.get("name", "")),
+                "rank": c.get("rank", "no rank"),
+            }
+            for c in children
+        ]

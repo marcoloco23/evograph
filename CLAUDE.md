@@ -16,9 +16,14 @@ EvoGraph is an evolutionary biology visualization platform that maps species rel
                            │                     │
                            ▼                     │
                      ┌──────────┐               │
-                     │  Redis   │  (unused yet)  │
-                     │ (6379)   │               │
+                     │  Redis   │  (caching +    │
+                     │ (6379)   │   Celery broker)│
                      └──────────┘               │
+                           │
+                     ┌──────────┐
+                     │  Celery  │  (background
+                     │  Worker  │   pipeline jobs)
+                     └──────────┘
                                                 │
                      ┌──────────────────────────┘
                      │  Pipeline scripts
@@ -47,16 +52,19 @@ evograph/
 │   │   │   │   ├── routes/           # search, taxa, graph, sequences, stats
 │   │   │   │   └── schemas/          # Pydantic response models
 │   │   │   ├── services/
-│   │   │   │   ├── ott_client.py     # OpenTree API (tnrs, subtree, taxon_info)
+│   │   │   │   ├── ott_client.py     # OpenTree API (tnrs, subtree, taxon_info, taxon_children)
 │   │   │   │   ├── bold_client.py    # BOLD portal v5 (currently down)
 │   │   │   │   ├── mi_distance.py    # entropy, MI, NMI, distance
-│   │   │   │   └── neighbor_index.py # family-scoped candidate selection
+│   │   │   │   ├── neighbor_index.py # family-scoped candidate selection
+│   │   │   │   ├── kmer_index.py     # FAISS k-mer ANN index for cross-family neighbors
+│   │   │   │   └── cache.py          # Redis cache get/set/invalidate
 │   │   │   ├── pipeline/            # Data ingestion & computation scripts
-│   │   │   │   ├── ingest_ott.py     # Newick parser → taxa table
-│   │   │   │   ├── ingest_ncbi.py    # NCBI esearch/efetch → sequences
+│   │   │   │   ├── ingest_ott.py     # Newick parser → taxa table (--strategy api|chunked, --resume)
+│   │   │   │   ├── ingest_ncbi.py    # NCBI esearch/efetch → sequences (NCBI_API_KEY support)
 │   │   │   │   ├── ingest_bold.py    # BOLD portal → sequences (portal down)
 │   │   │   │   ├── select_canonical.py # Pick best COI per species
-│   │   │   │   ├── build_neighbors.py  # Pairwise MI → kNN edges
+│   │   │   │   ├── build_neighbors.py  # Pairwise MI → kNN edges (--strategy family|kmer)
+│   │   │   │   ├── build_kmer_index.py # Build FAISS k-mer index from canonical sequences
 │   │   │   │   ├── build_graph_export.py # JSON files for caching
 │   │   │   │   ├── ingest_images.py  # Wikipedia thumbnails → node_media
 │   │   │   │   ├── backfill_ncbi_tax_id.py # NCBI Taxonomy API → ncbi_tax_id column
@@ -66,10 +74,13 @@ evograph/
 │   │   │   │   ├── rate_limit.py    # Sliding-window per-IP rate limiter
 │   │   │   │   ├── request_logging.py # Structured access logging + X-Request-ID
 │   │   │   │   └── security_headers.py # X-Content-Type-Options, X-Frame-Options, etc.
+│   │   │   ├── tasks/
+│   │   │   │   └── pipeline_tasks.py # Celery task wrappers for pipeline steps
+│   │   │   ├── worker.py            # Celery app factory
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 110 pytest tests
+│   │   └── tests/                    # 121 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -86,7 +97,8 @@ evograph/
 │   │       ├── test_rate_limit.py    # Rate limiting middleware tests
 │   │       ├── test_request_logging.py # Request logging middleware tests
 │   │       ├── test_logging_config.py # Logging configuration tests
-│   │       └── test_security_headers.py # Security headers middleware tests
+│   │       ├── test_security_headers.py # Security headers middleware tests
+│   │       └── test_kmer_index.py    # k-mer vector/FAISS index tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Multi-stage: dev (npm run dev) + prod (standalone build, non-root)
@@ -141,7 +153,7 @@ evograph/
 
 ## Database Schema
 
-Four PostgreSQL tables (migrations: `001_initial.py`, `002_performance_indexes.py`):
+Five PostgreSQL tables (migrations: `001_initial.py`, `002_performance_indexes.py`, `003_scale_animalia.py`):
 
 | Table | PK | Purpose | Key columns |
 |-------|-----|---------|-------------|
@@ -149,6 +161,7 @@ Four PostgreSQL tables (migrations: `001_initial.py`, `002_performance_indexes.p
 | **sequences** | `id` (uuid) | COI barcode DNA | ott_id (FK), marker, source, accession, sequence (text), length, quality (jsonb), is_canonical |
 | **edges** | `(src_ott_id, dst_ott_id, marker)` | MI similarity graph | distance (0-1), mi_norm (0-1), align_len |
 | **node_media** | `ott_id` (FK) | Species images | image_url, attribution (jsonb) |
+| **pipeline_runs** | `id` (text) | Background job tracking | step, scope, status, progress (jsonb), celery_task_id, error, timestamps |
 
 **Indexes (migration 001):** taxa(name), taxa(parent_ott_id), sequences(ott_id), edges(src_ott_id), edges(dst_ott_id)
 
@@ -175,6 +188,9 @@ All under FastAPI with CORS enabled (all origins).
 | GET | `/v1/graph/mi-network` | — | `GraphResponse` | Cached 5min in-memory |
 | GET | `/v1/graph/neighbors/{ott_id}` | `k` (1-50, default 15) | `NeighborOut[]` | Sorted by distance |
 | GET | `/v1/stats` | — | `StatsResponse` | Taxa/sequence/edge counts |
+| POST | `/v1/jobs/pipeline` | `JobSubmitRequest` body | `JobResponse` | Submit background pipeline job |
+| GET | `/v1/jobs/{job_id}` | — | `JobResponse` | Get pipeline job status |
+| GET | `/v1/jobs` | `step`, `status`, `limit` | `JobListResponse` | List pipeline jobs |
 
 **Key response types:**
 - `TaxonDetail`: includes children[], total_children, lineage[], has_canonical_sequence, wikipedia_url
@@ -188,16 +204,17 @@ All under FastAPI with CORS enabled (all origins).
 Run via Makefile or directly as `python -m evograph.pipeline.<name>`:
 
 ```
-1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (--scope configurable)
-2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences (genus fallback, --skip-existing)
+1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (--scope, --strategy api|chunked, --resume)
+2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences (genus fallback, --skip-existing, NCBI_API_KEY)
    ingest_bold     — Fetch COI from BOLD portal → sequences table (portal down)
 3. dedup_sequences — Remove duplicate accessions, keep longest (--dry-run supported)
 4. select_canonical — Score sequences (length - 10*ambig), mark best per species
-5. build_neighbors  — Pairwise alignment + MI distance → kNN edges (k=15)
-6. build_graph_export — Export nodes.json + edges.json
-7. ingest_images   — Wikipedia thumbnails → node_media table
-8. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
-9. validate        — Print quality report (genus/family sharing %, distance stats, --output for JSON)
+5. build_kmer_index — Build FAISS k-mer ANN index from canonical sequences
+6. build_neighbors  — Pairwise alignment + MI distance → kNN edges (--strategy family|kmer, --k 15)
+7. build_graph_export — Export nodes.json + edges.json
+8. ingest_images   — Wikipedia thumbnails → node_media table
+9. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
+10. validate       — Print quality report (genus/family sharing %, distance stats, --output for JSON)
 ```
 
 **Full pipeline:** `make pipeline` runs steps 1-7 in sequence.
@@ -236,7 +253,7 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (110 tests)
+# API tests (121 tests)
 cd apps/api && python -m pytest tests/ -v
 
 # Frontend tests (82 tests)
@@ -263,15 +280,16 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 CORS_ORIGINS=["*"]                    # JSON array of allowed origins
 LOG_LEVEL=info                        # debug, info, warning, error, critical
 LOG_FORMAT=text                       # text (dev) or json (production)
+NCBI_API_KEY=                         # Optional: enables 10 req/s vs 3 req/s
 ```
 
 ## Testing Strategy
 
-**Current: 192 tests passing** (110 API + 82 frontend)
+**Current: 203 tests passing** (121 API + 82 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
-- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
-- All 10 API endpoints (status codes, response schemas, validation errors, 404s)
+- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from/count), `MockDB` (registry by model type + execute for CTEs)
+- All 13 API endpoints (status codes, response schemas, validation errors, 404s)
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
 - Pipeline canonical selection scoring (11 tests for `_score` function)
 - NCBI taxonomy ID lookup (6 tests for `_lookup_tax_id` function)
@@ -282,6 +300,7 @@ LOG_FORMAT=text                       # text (dev) or json (production)
 - Rate limiting middleware (5 tests: headers, decrement, 429, exclusions)
 - Logging configuration (5 tests: JSON formatter, text/JSON/debug configuration)
 - Security headers middleware (2 tests: header values, main app integration)
+- k-mer index (11 tests: vector computation, normalization, FAISS build/query, save/load)
 
 **Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
 - `HomePage.test.tsx` — heading, search box, quick links, rank badges
@@ -358,9 +377,12 @@ The following types must stay in sync across three layers:
 - [ ] Run validate.py and document results (now with `--output` JSON export)
 - [ ] Production deployment config
 
-### Phase 2
-- [ ] k-mer candidate filtering (FAISS/Annoy) for cross-family neighbors
-- [ ] Job queue (Celery/RQ) for background pipeline jobs
+### Phase 2 (Infrastructure Complete)
+- [x] k-mer candidate filtering (FAISS) for cross-family neighbors
+- [x] Job queue (Celery/Redis) for background pipeline jobs
+- [x] Chunked OTT ingestion for large clades (--strategy chunked)
+- [x] NCBI API key support for faster ingestion (10 req/s)
+- [ ] Run pipeline for Mammalia, Reptilia, Amphibia, etc.
 - [ ] Precompute subtree graph exports for common entry points
 - [ ] Multi-marker support (16S, 18S)
 
@@ -392,7 +414,7 @@ The following types must stay in sync across three layers:
 
 - `pyproject.toml` requires Python >=3.11 (relaxed from 3.12 for compatibility)
 - Build backend is `hatchling.build` (not `hatchling.backends`)
-- Redis is configured but not used yet (reserved for caching)
+- Redis is used for Celery broker/backend and cache service
 - CORS defaults to `["*"]` — set `CORS_ORIGINS` env var for production
 - `data/raw/` and `data/processed/` are gitignored — not in repo
 - Graph JSON exports exist at `apps/api/src/data/processed/graph/` but are gitignored
@@ -400,5 +422,7 @@ The following types must stay in sync across three layers:
 - Edges are directed (A→B) but UI treats as undirected
 - The `ingest_images.py` uses raw SQL (`text()`) for the join query
 - MI network endpoint is cached in-memory (5min TTL) — stale data possible after pipeline re-run
+- FAISS k-mer index must be rebuilt after adding new canonical sequences (`build_kmer_index`)
+- Migration 003 requires running `alembic upgrade head` for pipeline_runs table and species partial index
 - Cytoscape types use `StylesheetStyle` (not `Stylesheet`) in newer @types/cytoscape
 - Migration 002 requires `pg_trgm` extension — enabled automatically in upgrade()

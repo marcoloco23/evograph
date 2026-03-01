@@ -210,11 +210,8 @@ def _persist_nodes(nodes: list[dict]) -> int:
     return count
 
 
-async def ingest(scope: str | None = None) -> None:
-    """Run the full OTT ingestion pipeline."""
-    scope = scope or settings.scope_ott_root
-    client = OpenTreeClient()
-
+async def _resolve_scope(client: OpenTreeClient, scope: str) -> int:
+    """Resolve a scope name to an OTT ID via TNRS."""
     logger.info("Resolving '%s' via TNRS...", scope)
     match_resp = await client.tnrs_match(scope)
     matches = match_resp["results"][0]["matches"]
@@ -222,9 +219,29 @@ async def ingest(scope: str | None = None) -> None:
         raise RuntimeError(f"No OTT match found for '{scope}'")
     ott_id = matches[0]["taxon"]["ott_id"]
     logger.info("Resolved '%s' -> ott_id=%d", scope, ott_id)
+    return ott_id
 
-    logger.info("Fetching taxonomy subtree...")
-    subtree_resp = await client.taxonomy_subtree(ott_id)
+
+async def _ingest_subtree(client: OpenTreeClient, ott_id: int, scope: str, resume: bool = False) -> int:
+    """Fetch and ingest a single subtree by OTT ID. Returns node count."""
+    # Check existing taxa if resuming
+    existing_ids: set[int] = set()
+    if resume:
+        session = SessionLocal()
+        try:
+            from sqlalchemy import select
+            rows = session.execute(select(Taxon.ott_id)).scalars().all()
+            existing_ids = set(rows)
+        finally:
+            session.close()
+
+    logger.info("Fetching taxonomy subtree for ott_id=%d...", ott_id)
+    try:
+        subtree_resp = await client.taxonomy_subtree(ott_id)
+    except Exception as e:
+        logger.error("Failed to fetch subtree for ott_id=%d: %s", ott_id, e)
+        return 0
+
     newick = subtree_resp["newick"]
     logger.info("Received Newick string (%d chars)", len(newick))
 
@@ -232,22 +249,81 @@ async def ingest(scope: str | None = None) -> None:
     nodes = _parse_newick(newick)
     logger.info("Parsed %d nodes", len(nodes))
 
+    if resume and existing_ids:
+        before = len(nodes)
+        nodes = [n for n in nodes if n["ott_id"] not in existing_ids]
+        logger.info("Resume mode: skipped %d existing nodes, %d new", before - len(nodes), len(nodes))
+        if not nodes:
+            return 0
+
     _infer_ranks(nodes)
     species_count = sum(1 for n in nodes if n["rank"] == "species")
     logger.info("Identified %d species by name pattern", species_count)
 
     await _enrich_ranks(client, nodes)
 
-    # Need to insert parent nodes before children (FK constraint)
-    # Sort: nodes without parent first, then by depth
-    ott_set = {n["ott_id"] for n in nodes}
-    # Null out parent_ott_id refs that point outside our set
+    ott_set = {n["ott_id"] for n in nodes} | existing_ids
     for n in nodes:
         if n["parent_ott_id"] not in ott_set:
             n["parent_ott_id"] = None
 
     count = _persist_nodes(nodes)
-    logger.info("Ingested %d taxa for scope '%s'", count, scope)
+    logger.info("Ingested %d taxa for subtree ott_id=%d", count, ott_id)
+    return count
+
+
+async def ingest(scope: str | None = None, strategy: str = "api", resume: bool = False) -> None:
+    """Run the full OTT ingestion pipeline.
+
+    Args:
+        scope: Root taxon name (default: from settings).
+        strategy: 'api' for single subtree fetch, 'chunked' for per-child fetching.
+        resume: Skip OTT IDs already in the database.
+    """
+    scope = scope or settings.scope_ott_root
+    client = OpenTreeClient()
+    ott_id = await _resolve_scope(client, scope)
+
+    if strategy == "chunked":
+        await ingest_chunked(client, ott_id, scope, resume=resume)
+    else:
+        await _ingest_subtree(client, ott_id, scope, resume=resume)
+
+
+async def ingest_chunked(
+    client: OpenTreeClient, root_ott_id: int, scope: str, resume: bool = False
+) -> None:
+    """Chunked ingestion: fetch each child's subtree separately.
+
+    Useful for very large clades (Animalia, Insecta) where the full Newick
+    string exceeds API limits or memory constraints.
+    """
+    # First, insert the root taxon itself
+    info = await client.taxon_info(root_ott_id)
+    root_node = {
+        "ott_id": root_ott_id,
+        "name": info.get("unique_name", info.get("name", scope)),
+        "rank": info.get("rank", "no rank"),
+        "parent_ott_id": None,
+    }
+    _persist_nodes([root_node])
+    logger.info("Inserted root taxon: %s (ott_id=%d)", root_node["name"], root_ott_id)
+
+    # Get direct children
+    children = await client.taxon_children(root_ott_id)
+    logger.info("Root has %d direct children to ingest", len(children))
+
+    total = 0
+    for i, child in enumerate(children):
+        child_ott_id = child["ott_id"]
+        child_name = child["name"]
+        logger.info("[%d/%d] Ingesting subtree: %s (ott_id=%d)", i + 1, len(children), child_name, child_ott_id)
+
+        count = await _ingest_subtree(client, child_ott_id, child_name, resume=resume)
+        total += count
+        logger.info("[%d/%d] Done: %d nodes from %s (running total: %d)", i + 1, len(children), count, child_name, total)
+
+    logger.info("Chunked ingestion complete for '%s': %d total taxa from %d children", scope, total, len(children))
 
 
 def main() -> None:
@@ -256,13 +332,21 @@ def main() -> None:
         "--scope", type=str, default=None,
         help="Root taxon name (default: from SCOPE_OTT_ROOT env or 'Aves')",
     )
+    parser.add_argument(
+        "--strategy", choices=["api", "chunked"], default="api",
+        help="Ingestion strategy: 'api' for single subtree fetch, 'chunked' for per-child fetching (default: api)",
+    )
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="Skip OTT IDs already in the database",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    asyncio.run(ingest(scope=args.scope))
+    asyncio.run(ingest(scope=args.scope, strategy=args.strategy, resume=args.resume))
 
 
 if __name__ == "__main__":
