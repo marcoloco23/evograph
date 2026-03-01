@@ -24,6 +24,7 @@ export default function RootLayout({
             <div style={linksStyle}>
               <Link href="/">Home</Link>
               <Link href="/graph">Graph</Link>
+              <Link href="/stats">Stats</Link>
             </div>
           </nav>
         </header>

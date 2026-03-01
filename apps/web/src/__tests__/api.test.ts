@@ -1,4 +1,4 @@
-import { getJSON, searchTaxa, getTaxon, getSubtreeGraph, getNeighbors, getChildren, getSequences } from "../lib/api";
+import { getJSON, searchTaxa, getTaxon, getSubtreeGraph, getNeighbors, getChildren, getSequences, getStats } from "../lib/api";
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -133,6 +133,21 @@ describe("API client", () => {
       await getSequences(123);
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("/v1/taxa/123/sequences"),
+        expect.anything()
+      );
+    });
+  });
+
+  describe("getStats", () => {
+    it("fetches stats endpoint", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ taxa: {}, sequences: {}, edges: {} }),
+      });
+
+      await getStats();
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/v1/stats"),
         expect.anything()
       );
     });

@@ -36,7 +36,7 @@ evograph/
 │   │   ├── Dockerfile                # Health check included
 │   │   ├── alembic.ini
 │   │   ├── src/evograph/
-│   │   │   ├── main.py               # FastAPI app, CORS, routers
+│   │   │   ├── main.py               # FastAPI app, CORS, rate limiting, routers
 │   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT
 │   │   │   ├── db/
 │   │   │   │   ├── models.py         # Taxon, Sequence, Edge, NodeMedia
@@ -61,10 +61,12 @@ evograph/
 │   │   │   │   ├── backfill_ncbi_tax_id.py # NCBI Taxonomy API → ncbi_tax_id column
 │   │   │   │   ├── dedup_sequences.py # Remove duplicate accessions
 │   │   │   │   └── validate.py       # Quality stats & outlier detection (JSON export)
+│   │   │   ├── middleware/
+│   │   │   │   └── rate_limit.py    # Sliding-window per-IP rate limiter
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 91 pytest tests
+│   │   └── tests/                    # 96 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -77,7 +79,8 @@ evograph/
 │   │       ├── test_ingest_ncbi.py   # NCBI ingestion search strategy tests
 │   │       ├── test_dedup_sequences.py # Sequence deduplication tests
 │   │       ├── test_stats.py         # Stats endpoint tests
-│   │       └── test_validate.py      # Validation pipeline tests
+│   │       ├── test_validate.py      # Validation pipeline tests
+│   │       └── test_rate_limit.py    # Rate limiting middleware tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Health check included
@@ -91,6 +94,9 @@ evograph/
 │           │   ├── layout.tsx        # Root layout, sticky nav
 │           │   ├── page.tsx          # Home: search + quick links
 │           │   ├── graph/page.tsx    # MI network explorer (Sigma.js) + node search
+│           │   ├── stats/page.tsx   # Database stats dashboard
+│           │   ├── not-found.tsx    # 404 page
+│           │   ├── error.tsx        # Error boundary page
 │           │   └── taxa/[ottId]/
 │           │       ├── page.tsx      # Taxon detail (hero, children, neighbors)
 │           │       └── sequences/page.tsx  # COI sequence viewer
@@ -105,7 +111,7 @@ evograph/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
-│           └── __tests__/            # 63 Jest + RTL tests
+│           └── __tests__/            # 64 Jest + RTL tests
 │               ├── HomePage.test.tsx
 │               ├── TaxonDetailPage.test.tsx
 │               ├── SequencesPage.test.tsx
@@ -218,10 +224,10 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (91 tests)
+# API tests (96 tests)
 cd apps/api && python -m pytest tests/ -v
 
-# Frontend tests (63 tests)
+# Frontend tests (64 tests)
 cd apps/web && npm test
 
 # Lint
@@ -246,11 +252,11 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 ## Testing Strategy
 
-**Current: 154 tests passing** (91 API + 63 frontend)
+**Current: 160 tests passing** (96 API + 64 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
-- All 9 API endpoints (status codes, response schemas, validation errors, 404s)
+- All 10 API endpoints (status codes, response schemas, validation errors, 404s)
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
 - Pipeline canonical selection scoring (11 tests for `_score` function)
 - NCBI taxonomy ID lookup (6 tests for `_lookup_tax_id` function)
@@ -258,6 +264,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 - Sequence deduplication (3 tests for `find_duplicates` function)
 - Validation pipeline (12 tests: walk_to_rank, report structure, outlier detection)
 - Stats endpoint (2 tests: structure, empty database)
+- Rate limiting middleware (5 tests: headers, decrement, 429, exclusions)
 
 **Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
 - `HomePage.test.tsx` — heading, search box, quick links, rank badges
@@ -355,6 +362,7 @@ The following types must stay in sync across three layers:
 - **Search:** pg_trgm GIN index for fast ILIKE substring matching; prefix matches ranked first
 - **MI network:** In-memory cache with 5-minute TTL
 - **Neighbor queries:** Composite index (src_ott_id, distance) for indexed ORDER BY + LIMIT
+- **Rate limiting:** Sliding-window per-IP (100 req/min), /health excluded, X-RateLimit headers
 
 ## Known Gotchas
 

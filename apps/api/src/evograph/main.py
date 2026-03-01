@@ -3,12 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from evograph.api.routes import graph, search, sequences, stats, taxa
+from evograph.middleware.rate_limit import RateLimitMiddleware
 from evograph.settings import settings
 
 app = FastAPI(title="EvoGraph MVP", version="0.1.0")
 
 # GZip responses > 500 bytes — critical for graph endpoints with large JSON payloads
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# Rate limiting: 100 requests/minute per IP (excludes /health, /docs)
+app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
 
 app.add_middleware(
     CORSMiddleware,
