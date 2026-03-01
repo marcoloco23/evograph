@@ -3,7 +3,7 @@
 ## High Priority
 
 ### Sequence Coverage
-- [ ] Expand NCBI ingestion — current query finds only 167/18,805 species. Try broader search terms, search by genus when species fails, increase `--per-species` limit
+- [x] Expand NCBI ingestion — broader COI gene search terms (COI/COX1/COXI/CO1 + title variants), genus-level fallback, `--skip-existing` flag
 - [ ] Retry BOLD portal — `portal.boldsystems.org` has been down since Feb 2026. Check periodically; when it returns, `ingest_bold.py` is ready
 - [x] Add NCBI taxonomy ID lookup — `backfill_ncbi_tax_id.py` queries NCBI Taxonomy API by scientific name and updates ncbi_tax_id column
 
@@ -36,7 +36,7 @@
 ### Data Quality
 - [ ] Run `validate.py` and document results — what % of neighbors share genus/family?
 - [ ] Flag taxonomic outliers — species whose MI neighbors are in different families
-- [ ] Deduplicate sequences — check for identical accessions from multiple sources
+- [x] Deduplicate sequences — `dedup_sequences.py` removes duplicate accessions, keeping longest per (ott_id, accession, marker)
 
 ### DevOps
 - [x] Add Dockerfile health checks — API (Python urllib), Web (Node fetch), DB (pg_isready), Redis (redis-cli ping)
@@ -47,7 +47,7 @@
 ## Phase 2 (from ROADMAP.md)
 
 ### Scale Across Animalia
-- [ ] Make `SCOPE_OTT_ROOT` configurable — support Mammalia, Chordata, etc.
+- [x] Make `SCOPE_OTT_ROOT` configurable — env var in docker-compose, `--scope` CLI arg, exposed in `/health` endpoint
 - [ ] k-mer candidate filtering — replace family-scoped search with ANN index (FAISS/Annoy) for cross-family neighbor detection
 - [ ] Job queue — replace one-shot scripts with Celery/RQ for background pipeline jobs
 - [ ] Precompute subtree graph exports for common entry points

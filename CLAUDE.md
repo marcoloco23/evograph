@@ -59,11 +59,12 @@ evograph/
 │   │   │   │   ├── build_graph_export.py # JSON files for caching
 │   │   │   │   ├── ingest_images.py  # Wikipedia thumbnails → node_media
 │   │   │   │   ├── backfill_ncbi_tax_id.py # NCBI Taxonomy API → ncbi_tax_id column
+│   │   │   │   ├── dedup_sequences.py # Remove duplicate accessions
 │   │   │   │   └── validate.py       # Quality stats & outlier detection
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 59 pytest tests
+│   │   └── tests/                    # 77 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -72,7 +73,9 @@ evograph/
 │   │       ├── test_sequences.py
 │   │       ├── test_mi_distance.py
 │   │       ├── test_pipeline.py      # Canonical selection scoring tests
-│   │       └── test_backfill_ncbi.py # NCBI tax ID lookup tests
+│   │       ├── test_backfill_ncbi.py # NCBI tax ID lookup tests
+│   │       ├── test_ingest_ncbi.py   # NCBI ingestion search strategy tests
+│   │       └── test_dedup_sequences.py # Sequence deduplication tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Health check included
@@ -143,7 +146,7 @@ All under FastAPI with CORS enabled (all origins).
 
 | Method | Path | Params | Response | Notes |
 |--------|------|--------|----------|-------|
-| GET | `/health` | — | `{"status":"ok"}` | |
+| GET | `/health` | — | `{"status":"ok","scope":"Aves"}` | Includes configured scope |
 | GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `TaxonSummary[]` | pg_trgm + prefix ranking |
 | GET | `/v1/taxa/{ott_id}` | — | `TaxonDetail` | Recursive CTE lineage |
 | GET | `/v1/taxa/{ott_id}/children` | `offset`, `limit` (max 500) | `ChildrenPage` | Paginated |
@@ -162,15 +165,16 @@ All under FastAPI with CORS enabled (all origins).
 Run via Makefile or directly as `python -m evograph.pipeline.<name>`:
 
 ```
-1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (~27,853 for Aves)
-2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences table
+1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (--scope configurable)
+2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences (genus fallback, --skip-existing)
    ingest_bold     — Fetch COI from BOLD portal → sequences table (portal down)
-3. select_canonical — Score sequences (length - 10*ambig), mark best per species
-4. build_neighbors  — Pairwise alignment + MI distance → kNN edges (k=15)
-5. build_graph_export — Export nodes.json + edges.json
-6. ingest_images   — Wikipedia thumbnails → node_media table
-7. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
-8. validate        — Print quality report (genus/family sharing %, distance stats)
+3. dedup_sequences — Remove duplicate accessions, keep longest (--dry-run supported)
+4. select_canonical — Score sequences (length - 10*ambig), mark best per species
+5. build_neighbors  — Pairwise alignment + MI distance → kNN edges (k=15)
+6. build_graph_export — Export nodes.json + edges.json
+7. ingest_images   — Wikipedia thumbnails → node_media table
+8. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
+9. validate        — Print quality report (genus/family sharing %, distance stats)
 ```
 
 **Full pipeline:** `make pipeline` runs steps 1-7 in sequence.
@@ -209,7 +213,7 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (59 tests)
+# API tests (77 tests)
 cd apps/api && python -m pytest tests/ -v
 
 # Frontend tests (58 tests)
@@ -237,7 +241,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 ## Testing Strategy
 
-**Current: 117 tests passing** (59 API + 58 frontend)
+**Current: 135 tests passing** (77 API + 58 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists), `MockDB` (registry by model type + execute for CTEs)
@@ -245,6 +249,8 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
 - Pipeline canonical selection scoring (11 tests for `_score` function)
 - NCBI taxonomy ID lookup (6 tests for `_lookup_tax_id` function)
+- NCBI ingestion search strategy (15 tests: query building, esearch, efetch, genus fallback)
+- Sequence deduplication (3 tests for `find_duplicates` function)
 
 **Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
 - `HomePage.test.tsx` — heading, search box, quick links, rank badges
@@ -303,14 +309,13 @@ The following types must stay in sync across three layers:
 | Images | Fetched from Wikipedia |
 
 **Why so few sequences:**
-- NCBI query finds only ~167 matches for Aves species
+- Initial NCBI query found only ~167 matches (narrow COI gene annotations)
+- Broader search + genus fallback now available (re-run `ingest_ncbi --skip-existing`)
 - BOLD portal has been down since Feb 2026
-- TODO: Broader NCBI search (genus fallback, relaxed terms)
 
 ## Remaining Work (from TODO.md)
 
 ### High Priority
-- [ ] Expand NCBI ingestion — try genus-level queries, broader search terms
 - [ ] Retry BOLD portal when it comes back online
 
 ### Medium Priority
@@ -318,7 +323,6 @@ The following types must stay in sync across three layers:
 - [ ] Production deployment config
 
 ### Phase 2
-- [ ] Make SCOPE_OTT_ROOT configurable for other clades
 - [ ] k-mer candidate filtering (FAISS/Annoy) for cross-family neighbors
 - [ ] Job queue (Celery/RQ) for background pipeline jobs
 - [ ] Multi-marker support (16S, 18S)

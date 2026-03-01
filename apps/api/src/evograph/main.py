@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from evograph.api.routes import graph, search, sequences, taxa
+from evograph.settings import settings
 
 app = FastAPI(title="EvoGraph MVP", version="0.1.0")
 
@@ -25,4 +26,4 @@ app.include_router(sequences.router, prefix="/v1")
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "scope": settings.scope_ott_root}

@@ -56,6 +56,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Test
+        run: npm test
+
   web-build:
     name: Web — build
     runs-on: ubuntu-latest

@@ -28,6 +28,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/evograph
       REDIS_URL: redis://redis:6379/0
+      SCOPE_OTT_ROOT: ${SCOPE_OTT_ROOT:-Aves}
     ports: ["8000:8000"]
     depends_on:
       db:
