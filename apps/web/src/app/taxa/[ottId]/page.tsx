@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { getTaxon, getNeighbors, getSubtreeGraph } from "@/lib/api";
+import { getTaxon, getNeighbors, getSubtreeGraph, getChildren } from "@/lib/api";
 import { wikipediaUrl, inaturalistUrl, ebirdUrl } from "@/lib/external-links";
 import type { TaxonDetail, TaxonSummary, NeighborOut, GraphResponse } from "@/lib/types";
 import TaxonCard from "@/components/TaxonCard";
+import { TaxonDetailSkeleton } from "@/components/Skeleton";
 
 const GraphView = dynamic(() => import("@/components/GraphView"), { ssr: false });
 
@@ -127,9 +128,11 @@ export default function TaxonDetailPage() {
   const ottId = Number(params.ottId);
 
   const [taxon, setTaxon] = useState<TaxonDetail | null>(null);
+  const [allChildren, setAllChildren] = useState<TaxonSummary[]>([]);
   const [neighbors, setNeighbors] = useState<NeighborOut[]>([]);
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     if (isNaN(ottId)) {
@@ -138,6 +141,7 @@ export default function TaxonDetailPage() {
     }
 
     setTaxon(null);
+    setAllChildren([]);
     setNeighbors([]);
     setGraph(null);
     setError(null);
@@ -149,19 +153,32 @@ export default function TaxonDetailPage() {
     ])
       .then(([t, n, g]) => {
         setTaxon(t);
+        setAllChildren(t.children);
         setNeighbors(n);
         setGraph(g);
       })
       .catch((err: Error) => setError(err.message));
   }, [ottId]);
 
+  const loadMoreChildren = () => {
+    if (!taxon || loadingMore) return;
+    setLoadingMore(true);
+    getChildren(ottId, allChildren.length, 100)
+      .then((page) => {
+        setAllChildren((prev) => [...prev, ...page.items]);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  };
+
   if (error) return <div className="error">Error: {error}</div>;
-  if (!taxon) return <div className="loading">Loading taxon...</div>;
+  if (!taxon) return <TaxonDetailSkeleton />;
 
   const isSpecies = taxon.rank === "species" || taxon.rank === "subspecies";
   const hasMiEdges = graph?.edges.some((e) => e.kind === "mi") ?? false;
   const showGraph = hasMiEdges && neighbors.length > 0;
-  const grouped = groupByRank(taxon.children);
+  const grouped = groupByRank(allChildren);
+  const hasMoreChildren = allChildren.length < taxon.total_children;
   const neighborMaxDist = neighbors.length > 0
     ? Math.max(...neighbors.map((n) => n.distance)) * 1.1  // 10% headroom
     : 1;
@@ -218,12 +235,17 @@ export default function TaxonDetailPage() {
             <a href={ebirdUrl(taxon.name)} target="_blank" rel="noopener noreferrer" className="ext-link">
               eBird
             </a>
+            {taxon.has_canonical_sequence && (
+              <Link href={`/taxa/${taxon.ott_id}/sequences`} className="ext-link">
+                COI Sequences
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
       {/* Stats bar */}
-      {taxon.children.length > 0 && <StatsBar items={taxon.children} />}
+      {taxon.total_children > 0 && <StatsBar items={allChildren} />}
 
       {/* Empty state */}
       {grouped.length === 0 && neighbors.length === 0 && (
@@ -240,7 +262,14 @@ export default function TaxonDetailPage() {
           {/* Children grouped by rank */}
           {grouped.length > 0 && (
             <section style={{ marginBottom: "2rem" }}>
-              <h2 style={sectionTitle}>Children</h2>
+              <h2 style={sectionTitle}>
+                Children
+                {hasMoreChildren && (
+                  <span style={{ fontSize: "0.8rem", fontWeight: 400, color: "#888", marginLeft: "0.5rem" }}>
+                    ({allChildren.length} of {taxon.total_children})
+                  </span>
+                )}
+              </h2>
               {grouped.map(([rank, items]) => (
                 <CollapsibleSection
                   key={rank}
@@ -255,6 +284,27 @@ export default function TaxonDetailPage() {
                   </div>
                 </CollapsibleSection>
               ))}
+              {hasMoreChildren && (
+                <button
+                  onClick={loadMoreChildren}
+                  disabled={loadingMore}
+                  style={{
+                    marginTop: "0.75rem",
+                    padding: "0.5rem 1.25rem",
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius)",
+                    color: "var(--accent)",
+                    cursor: loadingMore ? "wait" : "pointer",
+                    fontSize: "0.85rem",
+                    fontWeight: 500,
+                  }}
+                >
+                  {loadingMore
+                    ? "Loading..."
+                    : `Load more (${taxon.total_children - allChildren.length} remaining)`}
+                </button>
+              )}
             </section>
           )}
 

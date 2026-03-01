@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { getMiNetwork } from "@/lib/api";
 import type { GraphResponse } from "@/lib/types";
+import { GraphPageSkeleton } from "@/components/Skeleton";
 
 const GraphViewSigma = dynamic(
   () => import("@/components/GraphViewSigma"),
@@ -49,7 +50,7 @@ export default function GraphPage() {
       </div>
 
       {loading ? (
-        <div className="loading">Loading graph...</div>
+        <GraphPageSkeleton />
       ) : graph ? (
         <GraphViewSigma
           graph={graph}

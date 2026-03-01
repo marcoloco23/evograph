@@ -17,7 +17,15 @@ class TaxonDetail(BaseModel):
     parent_name: str | None = None
     ncbi_tax_id: int | None = None
     children: list[TaxonSummary] = []
+    total_children: int = 0
     has_canonical_sequence: bool = False
     image_url: str | None = None
     lineage: list[TaxonSummary] = []
     wikipedia_url: str | None = None
+
+
+class ChildrenPage(BaseModel):
+    items: list[TaxonSummary]
+    total: int
+    offset: int
+    limit: int

@@ -7,6 +7,7 @@ class SequenceOut(BaseModel):
     marker: str
     source: str
     accession: str
+    sequence: str
     length: int
     is_canonical: bool
     retrieved_at: datetime | None = None

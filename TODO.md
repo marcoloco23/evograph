@@ -8,22 +8,23 @@
 - [ ] Add NCBI taxonomy ID lookup — `ncbi_tax_id` column exists but is never populated. Add pipeline step to query NCBI Taxonomy by name and backfill
 
 ### Testing
-- [ ] API route tests — pytest + httpx TestClient for all 6 endpoints
-- [ ] Pipeline unit tests — test MI computation with known sequences, test canonical selection logic
+- [x] API route tests — pytest + httpx TestClient for all endpoints (42 tests)
+- [x] MI distance unit tests — entropy, MI computation, NMI clamping, distance conversion
+- [ ] Pipeline unit tests — test canonical selection logic
 - [ ] Frontend smoke tests — basic render tests for key pages
 
 ### Performance
 - [ ] Cache MI network endpoint — the full graph loads all edges every request. Add Redis or in-memory caching with TTL
 - [ ] Add DB indexes on `edges(src_ott_id, dst_ott_id)` if not already present
-- [ ] Paginate children for large taxa (Aves has 729 direct children)
+- [x] Paginate children for large taxa — inline limit of 100, dedicated `/taxa/{id}/children` endpoint with offset/limit
 
 ## Medium Priority
 
 ### Frontend Polish
-- [ ] Add `getSequences()` to frontend API client — endpoint exists but no client function
-- [ ] Sequence viewer page — show aligned sequences for a species, highlight conserved regions
-- [ ] Mobile responsive layout — test and fix breakpoints
-- [ ] Loading skeletons instead of plain "Loading..." text
+- [x] Add `getSequences()` to frontend API client
+- [x] Sequence viewer page — color-coded DNA bases, composition bar, expandable cards
+- [x] Mobile responsive layout — breakpoints at 768px and 480px
+- [x] Loading skeletons — shimmer animation for taxon detail and graph pages
 - [ ] Graph page: add node search/filter within the MI network
 
 ### Data Quality
@@ -33,7 +34,7 @@
 
 ### DevOps
 - [ ] Add Dockerfile health checks
-- [ ] CI pipeline (GitHub Actions) — lint, typecheck, test
+- [x] CI pipeline (GitHub Actions) — lint, typecheck, test, build
 - [ ] Production deployment config (fly.io, Railway, or VPS)
 
 ## Phase 2 (from ROADMAP.md)

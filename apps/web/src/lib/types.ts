@@ -11,10 +11,18 @@ export interface TaxonDetail extends TaxonSummary {
   parent_name: string | null;
   ncbi_tax_id: number | null;
   children: TaxonSummary[];
+  total_children: number;
   has_canonical_sequence: boolean;
   image_url: string | null;
   lineage: TaxonSummary[];
   wikipedia_url: string | null;
+}
+
+export interface ChildrenPage {
+  items: TaxonSummary[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface SequenceOut {
@@ -23,6 +31,7 @@ export interface SequenceOut {
   marker: string;
   source: string;
   accession: string;
+  sequence: string;
   length: number;
   is_canonical: boolean;
   retrieved_at: string | null;
