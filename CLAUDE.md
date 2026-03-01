@@ -2,9 +2,59 @@
 
 ## Project Overview
 
-EvoGraph is an evolutionary biology visualization platform that maps species relationships through both taxonomy (Open Tree of Life) and genetic similarity (mutual information from COI barcode sequences). The MVP scope is **Aves (birds)**: ~27,853 taxa, ~167 species with COI sequences, ~1,787 MI edges.
+EvoGraph is an evolutionary biology visualization platform that maps species relationships through both taxonomy (Open Tree of Life) and genetic similarity (mutual information from COI barcode sequences). Currently covers **Aves + Mammalia**: ~60,405 taxa, ~539 species with COI sequences, ~3,272 MI edges.
 
 **Core idea:** Build a k-nearest-neighbor graph where edge weight = MI-derived distance from pairwise COI sequence alignment. Overlay this on the taxonomic tree so users can explore how genetic similarity compares to taxonomic classification.
+
+## Live Deployment
+
+| Service | URL | Provider | Plan |
+|---------|-----|----------|------|
+| **Frontend** | https://web-theta-rust-21.vercel.app | Vercel | Free |
+| **API** | https://evograph-api.onrender.com | Render | Free |
+| **Database** | Render PostgreSQL (internal) | Render | Free |
+
+**Deployment architecture:**
+```
+┌─────────────────────┐       ┌──────────────────────────┐       ┌─────────────────┐
+│  Vercel (Frontend)  │──────▶│  Render (FastAPI API)     │──────▶│  Render Postgres │
+│  Next.js standalone │       │  Docker, 2 workers        │       │  256 MB free     │
+│  Auto-deploy from   │       │  Spins down after 15 min  │       │  90-day expiry   │
+│  GitHub main branch │       │  Cold start ~30s          │       │                  │
+└─────────────────────┘       └──────────────────────────┘       └─────────────────┘
+```
+
+**Key deployment files:**
+- `render.yaml` — Render Blueprint IaC (API service + PostgreSQL database)
+- `apps/web/vercel.json` — Vercel framework config
+- `apps/api/Dockerfile` — Multi-stage: `dev`, `prod`, `render` (uses `$PORT` env var)
+- `scripts/db-dump.sh` — Dump local DB for seeding remote
+
+**Deployment notes:**
+- Render free tier spins down after 15 min idle; first request after idle takes ~30s
+- Render free PostgreSQL expires after 90 days (must recreate or upgrade)
+- CORS is locked to the Vercel domain (`CORS_ORIGINS` env var in render.yaml)
+- Render provides `postgres://` URLs; `session.py` normalizes to `postgresql+psycopg://`
+- No Redis on Render free tier — Celery/cache features are local-only
+- Frontend env var `NEXT_PUBLIC_API_BASE` set in Vercel project settings
+
+**Seeding the Render database:**
+```bash
+# 1. Dump local database (plain SQL format)
+docker compose exec -T db pg_dump -U postgres --no-owner --no-acl evograph > data/evograph_dump.sql
+
+# 2. Restore to Render (use External Database URL from Render dashboard)
+#    The external hostname has the region suffix, e.g. dpg-xxx-a.oregon-postgres.render.com
+psql "<EXTERNAL_DATABASE_URL>?sslmode=require" < data/evograph_dump.sql
+
+# 3. Verify
+curl https://evograph-api.onrender.com/v1/stats
+```
+
+**Redeploying:**
+- Frontend: Push to `main` → Vercel auto-deploys
+- API: Push to `main` → Render auto-deploys (if connected via Blueprint)
+- Database: Must re-seed manually after schema changes or data updates
 
 ## Architecture
 
@@ -143,6 +193,8 @@ evograph/
 │               └── external-links.test.ts
 ├── docker-compose.yml                # Dev: postgres:16, redis:7, api (--reload), web (npm run dev)
 ├── docker-compose.prod.yml          # Prod override: multi-worker, non-root, no source mounts
+├── render.yaml                      # Render Blueprint IaC (API + PostgreSQL)
+├── scripts/db-dump.sh               # Dump local DB for seeding remote
 ├── Makefile                          # Pipeline + deployment commands (up, up-prod)
 ├── .github/workflows/ci.yml         # Lint, test, typecheck, build
 ├── .env.example
@@ -357,16 +409,26 @@ The following types must stay in sync across three layers:
 
 | Metric | Value |
 |--------|-------|
-| Total taxa | ~27,853 (Aves) |
-| Species with COI | ~167 (0.6%) |
-| Total sequences | ~167 |
-| MI edges | ~1,787 |
-| Images | Fetched from Wikipedia |
+| Total taxa | 60,405 (Aves + Mammalia) |
+| Species (total) | 38,281 |
+| Species with COI | 539 (1.4%) |
+| Total sequences | 1,914 |
+| MI edges | 3,272 |
+| Species images | 2,725 |
+| MI network nodes | 257 |
+| MI network edges | 2,326 |
 
-**Why so few sequences:**
-- Initial NCBI query found only ~167 matches (narrow COI gene annotations)
-- Broader search + genus fallback now available (re-run `ingest_ncbi --skip-existing`)
+**Clades ingested:** Aves (~27,853 taxa), Mammalia (~32,552 taxa)
+
+**Validation results (last run):**
+- 70.5% of nearest neighbors share the same family
+- 44.6% of nearest neighbors share the same genus
+- Zero cross-family outliers detected
+
+**Coverage is low because:**
+- NCBI COI gene annotations are narrow; many species lack annotated COI sequences
 - BOLD portal has been down since Feb 2026
+- Broader search + genus fallback available (re-run `ingest_ncbi --skip-existing`)
 
 ## Remaining Work (from TODO.md)
 
@@ -374,16 +436,17 @@ The following types must stay in sync across three layers:
 - [ ] Retry BOLD portal when it comes back online
 
 ### Medium Priority
-- [ ] Run validate.py and document results (now with `--output` JSON export)
-- [ ] Production deployment config
+- [ ] Precompute subtree graph exports for common entry points
 
-### Phase 2 (Infrastructure Complete)
+### Phase 2 (Infrastructure Complete, Deployed)
 - [x] k-mer candidate filtering (FAISS) for cross-family neighbors
 - [x] Job queue (Celery/Redis) for background pipeline jobs
 - [x] Chunked OTT ingestion for large clades (--strategy chunked)
 - [x] NCBI API key support for faster ingestion (10 req/s)
-- [ ] Run pipeline for Mammalia, Reptilia, Amphibia, etc.
-- [ ] Precompute subtree graph exports for common entry points
+- [x] Production deployment (Vercel + Render)
+- [x] Run pipeline for Mammalia
+- [x] Run validate.py (70.5% family coherence, 44.6% genus)
+- [ ] Run pipeline for Reptilia, Amphibia, Insecta, etc.
 - [ ] Multi-marker support (16S, 18S)
 
 ## Architectural Principles
@@ -426,3 +489,9 @@ The following types must stay in sync across three layers:
 - Migration 003 requires running `alembic upgrade head` for pipeline_runs table and species partial index
 - Cytoscape types use `StylesheetStyle` (not `Stylesheet`) in newer @types/cytoscape
 - Migration 002 requires `pg_trgm` extension — enabled automatically in upgrade()
+- Render free DB expires after 90 days — must recreate and re-seed
+- Render free API spins down after 15 min idle — cold start ~30s
+- Render provides `postgres://` URLs — `session.py` normalizes to `postgresql+psycopg://`
+- Render has no free Redis tier — Celery/cache unavailable in production
+- Render DB needs `0.0.0.0` in IP allowlist for external `psql` access (remove after seeding)
+- Vercel env var `NEXT_PUBLIC_API_BASE` must match the Render service URL exactly

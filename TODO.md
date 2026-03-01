@@ -34,7 +34,7 @@
 - [x] Graph page: node search/filter within the MI network — autocomplete dropdown with camera animation
 
 ### Data Quality
-- [ ] Run `validate.py` and document results — what % of neighbors share genus/family?
+- [x] Run `validate.py` and document results — 70.5% family coherence, 44.6% genus, zero cross-family outliers
 - [x] Flag taxonomic outliers — `validate.py` now returns structured `ValidationReport` with `OutlierRecord` objects (cross-family close, within-genus distant), JSON export via `--output`
 - [x] Deduplicate sequences — `dedup_sequences.py` removes duplicate accessions, keeping longest per (ott_id, accession, marker)
 
@@ -42,15 +42,31 @@
 - [x] Add Dockerfile health checks — API (Python urllib), Web (Node fetch), DB (pg_isready), Redis (redis-cli ping)
 - [x] CI pipeline (GitHub Actions) — lint, typecheck, test, build
 - [x] Fix lint warnings — removed unused imports, fixed f-string, removed unused variable
-- [ ] Production deployment config (fly.io, Railway, or VPS)
+- [x] Production deployment — Vercel (frontend) + Render (API + PostgreSQL), free tier
 
-## Phase 2 (from ROADMAP.md)
+## Phase 2 — Scale Across Animalia
 
-### Scale Across Animalia
+### Infrastructure (Complete)
 - [x] Make `SCOPE_OTT_ROOT` configurable — env var in docker-compose, `--scope` CLI arg, exposed in `/health` endpoint
-- [ ] k-mer candidate filtering — replace family-scoped search with ANN index (FAISS/Annoy) for cross-family neighbor detection
-- [ ] Job queue — replace one-shot scripts with Celery/RQ for background pipeline jobs
+- [x] k-mer candidate filtering — FAISS ANN index (6-mer, 4096-dim) for cross-family neighbor detection
+- [x] Job queue — Celery + Redis for background pipeline jobs (local only, no Render free Redis)
+- [x] Chunked OTT ingestion — `--strategy chunked` for large clades, `--resume` for interrupted runs
+- [x] NCBI API key support — `NCBI_API_KEY` env var enables 10 req/s (vs 3 req/s)
+
+### Data Expansion
+- [x] Ingest Mammalia — 32,552 taxa added (60,405 total)
+- [x] Run NCBI ingestion for Mammalia — 1,914 total sequences, 539 species
+- [x] Build kmer index + kNN edges — 3,272 MI edges, 257 network nodes
+- [x] Ingest images — 2,725 species images from Wikipedia
+- [ ] Ingest Reptilia, Amphibia, Insecta, etc.
 - [ ] Precompute subtree graph exports for common entry points
+
+### Deployment (Complete)
+- [x] Frontend deployed to Vercel — https://web-theta-rust-21.vercel.app
+- [x] API deployed to Render — https://evograph-api.onrender.com
+- [x] PostgreSQL seeded on Render — 60,405 taxa, 1,914 sequences, 3,272 edges, 2,725 images
+- [ ] Set up monitoring / uptime alerts
+- [ ] Custom domain (optional)
 
 ### Multi-Marker Support (Phase 3)
 - [ ] Add 16S, 18S marker ingestion
