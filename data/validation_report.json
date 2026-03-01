@@ -1,0 +1,20 @@
+{
+  "total_edges": 1787,
+  "taxonomy_coherence": {
+    "same_genus": 952,
+    "same_family": 1787,
+    "same_genus_pct": 53.27,
+    "same_family_pct": 100.0
+  },
+  "distance_distribution": {
+    "min": 0.0,
+    "max": 0.6865,
+    "mean": 0.2685,
+    "median": 0.2865,
+    "stdev": 0.1229
+  },
+  "outliers": {
+    "cross_family_close": [],
+    "within_genus_distant": []
+  }
+}
