@@ -58,11 +58,12 @@ evograph/
 │   │   │   │   ├── build_neighbors.py  # Pairwise MI → kNN edges
 │   │   │   │   ├── build_graph_export.py # JSON files for caching
 │   │   │   │   ├── ingest_images.py  # Wikipedia thumbnails → node_media
+│   │   │   │   ├── backfill_ncbi_tax_id.py # NCBI Taxonomy API → ncbi_tax_id column
 │   │   │   │   └── validate.py       # Quality stats & outlier detection
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 53 pytest tests
+│   │   └── tests/                    # 59 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -70,12 +71,15 @@ evograph/
 │   │       ├── test_graph.py
 │   │       ├── test_sequences.py
 │   │       ├── test_mi_distance.py
-│   │       └── test_pipeline.py      # Canonical selection scoring tests
+│   │       ├── test_pipeline.py      # Canonical selection scoring tests
+│   │       └── test_backfill_ncbi.py # NCBI tax ID lookup tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Health check included
 │       ├── tsconfig.json             # Strict mode, @/* path alias
 │       ├── next.config.js            # output: "standalone"
+│       ├── jest.config.js            # Jest + next/jest setup
+│       ├── jest.setup.ts             # @testing-library/jest-dom
 │       └── src/
 │           ├── app/
 │           │   ├── globals.css       # Dark theme, skeleton, responsive, graph search
@@ -95,6 +99,15 @@ evograph/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
+│           └── __tests__/            # 58 Jest + RTL tests
+│               ├── HomePage.test.tsx
+│               ├── TaxonDetailPage.test.tsx
+│               ├── SequencesPage.test.tsx
+│               ├── SearchBox.test.tsx
+│               ├── TaxonCard.test.tsx
+│               ├── Skeleton.test.tsx
+│               ├── api.test.ts
+│               └── external-links.test.ts
 ├── docker-compose.yml                # postgres:16, redis:7, api, web (with health checks)
 ├── Makefile                          # Pipeline orchestration commands
 ├── .github/workflows/ci.yml         # Lint, test, typecheck, build
@@ -156,7 +169,8 @@ Run via Makefile or directly as `python -m evograph.pipeline.<name>`:
 4. build_neighbors  — Pairwise alignment + MI distance → kNN edges (k=15)
 5. build_graph_export — Export nodes.json + edges.json
 6. ingest_images   — Wikipedia thumbnails → node_media table
-7. validate        — Print quality report (genus/family sharing %, distance stats)
+7. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
+8. validate        — Print quality report (genus/family sharing %, distance stats)
 ```
 
 **Full pipeline:** `make pipeline` runs steps 1-7 in sequence.
@@ -195,8 +209,11 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (53 tests)
+# API tests (59 tests)
 cd apps/api && python -m pytest tests/ -v
+
+# Frontend tests (58 tests)
+cd apps/web && npm test
 
 # Lint
 cd apps/api && ruff check src/ tests/
@@ -220,22 +237,30 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 ## Testing Strategy
 
-**Current: 53 tests passing** (all in `apps/api/tests/`)
+**Current: 117 tests passing** (59 API + 58 frontend)
 
-Tests use `MockDB` with FastAPI dependency override — no real database needed:
-- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar), `MockDB` (registry by model type)
-- Override `get_db` dependency with mock session
-
-**What's tested:**
+**API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
+- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists), `MockDB` (registry by model type + execute for CTEs)
 - All 8 API endpoints (status codes, response schemas, validation errors, 404s)
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
 - Pipeline canonical selection scoring (11 tests for `_score` function)
+- NCBI taxonomy ID lookup (6 tests for `_lookup_tax_id` function)
+
+**Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
+- `HomePage.test.tsx` — heading, search box, quick links, rank badges
+- `TaxonDetailPage.test.tsx` — skeleton, hero, breadcrumb, children, external links, error state
+- `SequencesPage.test.tsx` — skeleton, accessions, canonical badge, composition, expansion toggle
+- `SearchBox.test.tsx` — debounce, API calls, dropdown, navigation on selection
+- `TaxonCard.test.tsx` — rendering, links, child count, image, italicization
+- `Skeleton.test.tsx` — SkeletonLine/Circle/Card, TaxonDetailSkeleton, GraphPageSkeleton
+- `api.test.ts` — all API client functions (URL construction, error handling)
+- `external-links.test.ts` — Wikipedia, iNaturalist, eBird URL formatting
 
 **What's NOT tested:**
 - Full pipeline integration (ingest, neighbor building)
-- Frontend components (no Jest/RTL)
 - External API integration (OpenTree, NCBI, Wikipedia)
 - Database migrations
+- Graph rendering components (Cytoscape, Sigma.js — require canvas)
 
 ## Frontend Conventions
 
@@ -287,7 +312,6 @@ The following types must stay in sync across three layers:
 ### High Priority
 - [ ] Expand NCBI ingestion — try genus-level queries, broader search terms
 - [ ] Retry BOLD portal when it comes back online
-- [ ] Frontend smoke tests
 
 ### Medium Priority
 - [ ] Run validate.py and document results

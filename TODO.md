@@ -5,13 +5,13 @@
 ### Sequence Coverage
 - [ ] Expand NCBI ingestion — current query finds only 167/18,805 species. Try broader search terms, search by genus when species fails, increase `--per-species` limit
 - [ ] Retry BOLD portal — `portal.boldsystems.org` has been down since Feb 2026. Check periodically; when it returns, `ingest_bold.py` is ready
-- [ ] Add NCBI taxonomy ID lookup — `ncbi_tax_id` column exists but is never populated. Add pipeline step to query NCBI Taxonomy by name and backfill
+- [x] Add NCBI taxonomy ID lookup — `backfill_ncbi_tax_id.py` queries NCBI Taxonomy API by scientific name and updates ncbi_tax_id column
 
 ### Testing
 - [x] API route tests — pytest + httpx TestClient for all endpoints (42 tests)
 - [x] MI distance unit tests — entropy, MI computation, NMI clamping, distance conversion
 - [x] Pipeline unit tests — canonical selection scoring logic (11 tests)
-- [ ] Frontend smoke tests — basic render tests for key pages
+- [x] Frontend smoke tests — Jest + React Testing Library, 58 tests across 8 suites (pages, components, API client, utilities)
 
 ### Performance
 - [x] Cache MI network endpoint — in-memory cache with 5-minute TTL
