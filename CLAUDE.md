@@ -36,8 +36,8 @@ evograph/
 │   │   ├── Dockerfile                # Health check included
 │   │   ├── alembic.ini
 │   │   ├── src/evograph/
-│   │   │   ├── main.py               # FastAPI app, CORS, rate limiting, routers
-│   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT
+│   │   │   ├── main.py               # FastAPI app, CORS, rate limiting, logging, routers
+│   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT, CORS_ORIGINS
 │   │   │   ├── db/
 │   │   │   │   ├── models.py         # Taxon, Sequence, Edge, NodeMedia
 │   │   │   │   ├── session.py        # engine, SessionLocal, get_db
@@ -62,11 +62,12 @@ evograph/
 │   │   │   │   ├── dedup_sequences.py # Remove duplicate accessions
 │   │   │   │   └── validate.py       # Quality stats & outlier detection (JSON export)
 │   │   │   ├── middleware/
-│   │   │   │   └── rate_limit.py    # Sliding-window per-IP rate limiter
+│   │   │   │   ├── rate_limit.py    # Sliding-window per-IP rate limiter
+│   │   │   │   └── request_logging.py # Structured access logging + X-Request-ID
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 96 pytest tests
+│   │   └── tests/                    # 99 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -80,7 +81,8 @@ evograph/
 │   │       ├── test_dedup_sequences.py # Sequence deduplication tests
 │   │       ├── test_stats.py         # Stats endpoint tests
 │   │       ├── test_validate.py      # Validation pipeline tests
-│   │       └── test_rate_limit.py    # Rate limiting middleware tests
+│   │       ├── test_rate_limit.py    # Rate limiting middleware tests
+│   │       └── test_request_logging.py # Request logging middleware tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Health check included
@@ -111,7 +113,7 @@ evograph/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
-│           └── __tests__/            # 64 Jest + RTL tests
+│           └── __tests__/            # 71 Jest + RTL tests
 │               ├── HomePage.test.tsx
 │               ├── TaxonDetailPage.test.tsx
 │               ├── SequencesPage.test.tsx
@@ -119,6 +121,7 @@ evograph/
 │               ├── TaxonCard.test.tsx
 │               ├── Skeleton.test.tsx
 │               ├── ErrorBoundary.test.tsx
+│               ├── StatsPage.test.tsx
 │               ├── api.test.ts
 │               └── external-links.test.ts
 ├── docker-compose.yml                # postgres:16, redis:7, api, web (with health checks)
