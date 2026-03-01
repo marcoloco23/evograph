@@ -1,6 +1,7 @@
 """Stats endpoint for observability — database counts and data quality overview."""
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,7 @@ router = APIRouter(tags=["stats"])
 
 
 @router.get("/stats")
-def get_stats(db: Session = Depends(get_db)) -> dict:
+def get_stats(db: Session = Depends(get_db)):
     """Return summary statistics about the database contents.
 
     Includes:
@@ -63,7 +64,7 @@ def get_stats(db: Session = Depends(get_db)) -> dict:
             "avg": round(float(row[2]), 4) if row[2] is not None else None,
         }
 
-    return {
+    data = {
         "taxa": {
             "total": total_taxa,
             "by_rank": {rank: count for rank, count in rank_counts},
@@ -83,3 +84,4 @@ def get_stats(db: Session = Depends(get_db)) -> dict:
             "distance": distance_stats,
         },
     }
+    return JSONResponse(content=data, headers={"Cache-Control": "public, max-age=60"})

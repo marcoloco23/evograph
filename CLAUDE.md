@@ -64,11 +64,12 @@ evograph/
 │   │   │   │   └── validate.py       # Quality stats & outlier detection (JSON export)
 │   │   │   ├── middleware/
 │   │   │   │   ├── rate_limit.py    # Sliding-window per-IP rate limiter
-│   │   │   │   └── request_logging.py # Structured access logging + X-Request-ID
+│   │   │   │   ├── request_logging.py # Structured access logging + X-Request-ID
+│   │   │   │   └── security_headers.py # X-Content-Type-Options, X-Frame-Options, etc.
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 108 pytest tests
+│   │   └── tests/                    # 110 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -84,7 +85,8 @@ evograph/
 │   │       ├── test_validate.py      # Validation pipeline tests
 │   │       ├── test_rate_limit.py    # Rate limiting middleware tests
 │   │       ├── test_request_logging.py # Request logging middleware tests
-│   │       └── test_logging_config.py # Logging configuration tests
+│   │       ├── test_logging_config.py # Logging configuration tests
+│   │       └── test_security_headers.py # Security headers middleware tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Multi-stage: dev (npm run dev) + prod (standalone build, non-root)
@@ -115,10 +117,11 @@ evograph/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
-│           └── __tests__/            # 71 Jest + RTL tests
+│           └── __tests__/            # 82 Jest + RTL tests
 │               ├── HomePage.test.tsx
 │               ├── TaxonDetailPage.test.tsx
 │               ├── SequencesPage.test.tsx
+│               ├── GraphPage.test.tsx
 │               ├── SearchBox.test.tsx
 │               ├── TaxonCard.test.tsx
 │               ├── Skeleton.test.tsx
@@ -233,10 +236,10 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (108 tests)
+# API tests (110 tests)
 cd apps/api && python -m pytest tests/ -v
 
-# Frontend tests (71 tests)
+# Frontend tests (82 tests)
 cd apps/web && npm test
 
 # Lint
@@ -264,7 +267,7 @@ LOG_FORMAT=text                       # text (dev) or json (production)
 
 ## Testing Strategy
 
-**Current: 179 tests passing** (108 API + 71 frontend)
+**Current: 192 tests passing** (110 API + 82 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
@@ -278,12 +281,14 @@ LOG_FORMAT=text                       # text (dev) or json (production)
 - Stats endpoint (2 tests: structure, empty database)
 - Rate limiting middleware (5 tests: headers, decrement, 429, exclusions)
 - Logging configuration (5 tests: JSON formatter, text/JSON/debug configuration)
+- Security headers middleware (2 tests: header values, main app integration)
 
 **Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
 - `HomePage.test.tsx` — heading, search box, quick links, rank badges
 - `TaxonDetailPage.test.tsx` — skeleton, hero, breadcrumb, children, external links, error state
 - `SequencesPage.test.tsx` — skeleton, accessions, canonical badge, composition, expansion toggle
-- `SearchBox.test.tsx` — debounce, API calls, dropdown, navigation on selection
+- `GraphPage.test.tsx` — loading skeleton, title, stats counts, error state, node search, description
+- `SearchBox.test.tsx` — debounce, API calls, dropdown, navigation on selection, keyboard nav (arrows/Enter/Escape), ARIA combobox
 - `TaxonCard.test.tsx` — rendering, links, child count, image, italicization
 - `Skeleton.test.tsx` — SkeletonLine/Circle/Card, TaxonDetailSkeleton, GraphPageSkeleton
 - `ErrorBoundary.test.tsx` — renders children, fallback on error, custom fallback, retry recovery
@@ -380,6 +385,8 @@ The following types must stay in sync across three layers:
 - **Rate limiting:** Sliding-window per-IP (100 req/min), /health excluded, X-RateLimit headers
 - **Graceful shutdown:** Lifespan context manager disposes connection pool on SIGTERM
 - **Readiness probe:** /health/ready checks DB connectivity and reports pool stats
+- **Security headers:** X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy
+- **Cache-Control:** MI network (5min), stats (1min) — reduces redundant API calls
 
 ## Known Gotchas
 

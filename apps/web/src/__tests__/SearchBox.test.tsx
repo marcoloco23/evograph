@@ -93,4 +93,64 @@ describe("SearchBox", () => {
 
     expect(mockPush).toHaveBeenCalledWith("/taxa/187411");
   });
+
+  it("has combobox ARIA role", () => {
+    render(<SearchBox />);
+    const input = screen.getByRole("combobox");
+    expect(input).toBeInTheDocument();
+  });
+
+  it("navigates with arrow keys and Enter", async () => {
+    const user = userEvent.setup();
+    mockSearchTaxa.mockResolvedValue({
+      items: [
+        { ott_id: 187411, name: "Corvidae", rank: "family", child_count: 10, image_url: null },
+        { ott_id: 369568, name: "Corvus", rank: "genus", child_count: 5, image_url: null },
+      ],
+      total: 2,
+      limit: 20,
+    });
+    render(<SearchBox />);
+    const input = screen.getByPlaceholderText(/search taxa/i);
+    await user.type(input, "corv");
+
+    await waitFor(() => expect(screen.getByText("Corvidae")).toBeInTheDocument(), {
+      timeout: 1000,
+    });
+
+    // ArrowDown selects first item
+    await user.keyboard("{ArrowDown}");
+    const firstOption = screen.getByText("Corvidae").closest("li");
+    expect(firstOption?.getAttribute("aria-selected")).toBe("true");
+
+    // ArrowDown again selects second item
+    await user.keyboard("{ArrowDown}");
+    const secondOption = screen.getByText("Corvus").closest("li");
+    expect(secondOption?.getAttribute("aria-selected")).toBe("true");
+
+    // Enter navigates to selected item
+    await user.keyboard("{Enter}");
+    expect(mockPush).toHaveBeenCalledWith("/taxa/369568");
+  });
+
+  it("closes dropdown with Escape", async () => {
+    const user = userEvent.setup();
+    mockSearchTaxa.mockResolvedValue({
+      items: [{ ott_id: 187411, name: "Corvidae", rank: "family", child_count: 10, image_url: null }],
+      total: 1,
+      limit: 20,
+    });
+    render(<SearchBox />);
+    const input = screen.getByPlaceholderText(/search taxa/i);
+    await user.type(input, "corv");
+
+    await waitFor(() => expect(screen.getByText("Corvidae")).toBeInTheDocument(), {
+      timeout: 1000,
+    });
+
+    await user.keyboard("{Escape}");
+
+    // Dropdown should be closed — listbox should no longer be visible
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
 });

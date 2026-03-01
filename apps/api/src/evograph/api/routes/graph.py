@@ -2,7 +2,7 @@
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, text
 from sqlalchemy.orm import Session
 
@@ -115,6 +115,7 @@ def get_subtree_graph(
 
 @router.get("/graph/mi-network", response_model=GraphResponse)
 def get_mi_network(
+    response: Response,
     db: Session = Depends(get_db),
 ) -> GraphResponse:
     """Get the full MI similarity network: all species with MI edges.
@@ -128,6 +129,7 @@ def get_mi_network(
     global _mi_network_cache, _mi_network_cache_time
     now = time.monotonic()
     if _mi_network_cache is not None and (now - _mi_network_cache_time) < _MI_NETWORK_TTL:
+        response.headers["Cache-Control"] = "public, max-age=300"
         return _mi_network_cache
 
     # Get all MI edges
@@ -195,6 +197,8 @@ def get_mi_network(
     result = GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
     _mi_network_cache = result
     _mi_network_cache_time = time.monotonic()
+
+    response.headers["Cache-Control"] = "public, max-age=300"
     return result
 
 

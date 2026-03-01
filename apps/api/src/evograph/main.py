@@ -11,6 +11,7 @@ from evograph.db.session import SessionLocal, engine
 from evograph.logging_config import configure_logging
 from evograph.middleware.rate_limit import RateLimitMiddleware
 from evograph.middleware.request_logging import RequestLoggingMiddleware
+from evograph.middleware.security_headers import SecurityHeadersMiddleware
 from evograph.settings import settings
 
 configure_logging()
@@ -42,7 +43,10 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 # 3. Rate limiting: 100 requests/minute per IP (excludes /health, /docs)
 app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
 
-# 4. CORS — configurable origins (default: allow all for dev)
+# 4. Security headers — X-Content-Type-Options, X-Frame-Options, etc.
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 5. CORS — configurable origins (default: allow all for dev)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

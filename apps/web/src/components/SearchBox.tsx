@@ -10,6 +10,7 @@ export default function SearchBox() {
   const [results, setResults] = useState<TaxonSummary[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const router = useRouter();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,6 +30,7 @@ export default function SearchBox() {
         const data = await searchTaxa(query.trim());
         setResults(data.items);
         setIsOpen(data.items.length > 0);
+        setActiveIndex(-1);
       } catch {
         setResults([]);
       } finally {
@@ -54,7 +56,26 @@ export default function SearchBox() {
   function handleSelect(ottId: number) {
     setIsOpen(false);
     setQuery("");
+    setActiveIndex(-1);
     router.push(`/taxa/${ottId}`);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!isOpen || results.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      handleSelect(results[activeIndex].ott_id);
+    } else if (e.key === "Escape") {
+      setIsOpen(false);
+      setActiveIndex(-1);
+    }
   }
 
   return (
@@ -64,19 +85,30 @@ export default function SearchBox() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => results.length > 0 && setIsOpen(true)}
+        onKeyDown={handleKeyDown}
         placeholder="Search taxa (e.g. Corvidae, Homo sapiens)..."
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
         style={inputStyle}
       />
       {isLoading && (
         <span style={spinnerStyle}>...</span>
       )}
       {isOpen && results.length > 0 && (
-        <ul style={dropdownStyle}>
-          {results.map((taxon) => (
+        <ul role="listbox" style={dropdownStyle}>
+          {results.map((taxon, index) => (
             <li
               key={taxon.ott_id}
-              style={itemStyle}
+              id={`search-result-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
+              style={{
+                ...itemStyle,
+                background: index === activeIndex ? "var(--border)" : undefined,
+              }}
               onMouseDown={() => handleSelect(taxon.ott_id)}
+              onMouseEnter={() => setActiveIndex(index)}
             >
               <span style={taxon.rank === "species" ? { fontStyle: "italic" } : undefined}>
                 {taxon.name}
