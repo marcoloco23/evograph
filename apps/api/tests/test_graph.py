@@ -100,13 +100,15 @@ class TestMiNetwork:
             assert "src" in e
             assert "dst" in e
             assert "distance" in e
+            assert "mi_norm" in e
+            assert "align_len" in e
 
 
 class TestNeighbors:
     def test_neighbors_returns_sorted(self, client, mock_db):
         taxon = _make_taxon(700118, "Corvus corax", "species")
         corone = _make_taxon(893498, "Corvus corone", "species")
-        edge = _make_edge(700118, 893498, distance=0.15, mi_norm=0.85)
+        edge = _make_edge(700118, 893498, distance=0.15, mi_norm=0.85, align_len=542)
 
         mock_db.set(Taxon, [taxon])
         mock_db.set((Edge, Taxon), [(edge, corone)])
@@ -119,6 +121,7 @@ class TestNeighbors:
         assert data[0]["ott_id"] == 893498
         assert data[0]["distance"] == 0.15
         assert data[0]["mi_norm"] == 0.85
+        assert data[0]["align_len"] == 542
 
     def test_neighbors_not_found(self, client, mock_db):
         mock_db.set(Taxon, [])
@@ -158,4 +161,19 @@ class TestNeighbors:
 
         resp = client.get("/v1/graph/neighbors/700118")
         item = resp.json()[0]
-        assert set(item.keys()) == {"ott_id", "name", "rank", "distance", "mi_norm"}
+        assert set(item.keys()) == {
+            "ott_id", "name", "rank", "distance", "mi_norm",
+            "align_len", "shared_rank",
+        }
+
+    def test_neighbor_shared_rank_null_without_lineage(self, client, mock_db):
+        taxon = _make_taxon(700118, "Corvus corax", "species")
+        corone = _make_taxon(893498, "Corvus corone", "species")
+        edge = _make_edge(700118, 893498, distance=0.15, mi_norm=0.85)
+
+        mock_db.set(Taxon, [taxon])
+        mock_db.set((Edge, Taxon), [(edge, corone)])
+
+        resp = client.get("/v1/graph/neighbors/700118")
+        data = resp.json()
+        assert data[0]["shared_rank"] is None

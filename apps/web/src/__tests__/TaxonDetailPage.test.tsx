@@ -129,4 +129,41 @@ describe("TaxonDetailPage", () => {
       expect(screen.getByText(/Network error/)).toBeInTheDocument();
     });
   });
+
+  it("renders MI neighbors with NMI similarity", async () => {
+    const neighbors = [
+      {
+        ott_id: 100001,
+        name: "Pica pica",
+        rank: "species",
+        distance: 0.15,
+        mi_norm: 0.85,
+        align_len: 542,
+        shared_rank: "family",
+      },
+    ];
+    (getNeighbors as jest.Mock).mockResolvedValue(neighbors);
+    render(<TaxonDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText(/85% NMI/)).toBeInTheDocument();
+      expect(screen.getByText(/542 cols/)).toBeInTheDocument();
+      expect(screen.getByText("Pica pica")).toBeInTheDocument();
+    });
+  });
+
+  it("shows taxonomic coherence summary for neighbors", async () => {
+    const neighbors = [
+      { ott_id: 1, name: "Species A", rank: "species", distance: 0.1, mi_norm: 0.9, align_len: 600, shared_rank: "genus" },
+      { ott_id: 2, name: "Species B", rank: "species", distance: 0.2, mi_norm: 0.8, align_len: 550, shared_rank: "family" },
+      { ott_id: 3, name: "Species C", rank: "species", distance: 0.4, mi_norm: 0.6, align_len: 500, shared_rank: "order" },
+    ];
+    (getNeighbors as jest.Mock).mockResolvedValue(neighbors);
+    render(<TaxonDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Taxonomic coherence:")).toBeInTheDocument();
+      expect(screen.getByText("1 same genus")).toBeInTheDocument();
+      expect(screen.getByText("1 same family")).toBeInTheDocument();
+      expect(screen.getByText("1 cross-family")).toBeInTheDocument();
+    });
+  });
 });
