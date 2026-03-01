@@ -6,8 +6,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential autoconf automake libtool m4 zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install dependencies first (cached layer)
 COPY pyproject.toml .
 RUN pip install --no-cache-dir .
+
+# Remove build tools to reduce image size
+RUN apt-get purge -y --auto-remove build-essential autoconf automake libtool m4 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY src/ src/
 COPY alembic.ini .
@@ -30,3 +35,7 @@ RUN groupadd --gid 1000 appuser && \
 USER appuser
 
 CMD ["uvicorn", "evograph.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--log-level", "warning"]
+
+# ── Render (last stage = default, uses $PORT env var) ──
+FROM base AS render
+CMD uvicorn evograph.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 2 --log-level warning
