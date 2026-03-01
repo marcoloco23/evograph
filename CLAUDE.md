@@ -209,7 +209,7 @@ Five PostgreSQL tables (migrations: `001_initial.py`, `002_performance_indexes.p
 
 | Table | PK | Purpose | Key columns |
 |-------|-----|---------|-------------|
-| **taxa** | `ott_id` (int) | Taxonomy backbone | name, rank, parent_ott_id (self-FK), ncbi_tax_id, lineage (int[]), synonyms (jsonb) |
+| **taxa** | `ott_id` (int) | Taxonomy backbone | name, rank, parent_ott_id (self-FK), ncbi_tax_id, lineage (int[]), synonyms (jsonb), is_extinct (bool) |
 | **sequences** | `id` (uuid) | COI barcode DNA | ott_id (FK), marker, source, accession, sequence (text), length, quality (jsonb), is_canonical |
 | **edges** | `(src_ott_id, dst_ott_id, marker)` | MI similarity graph | distance (0-1), mi_norm (0-1), align_len |
 | **node_media** | `ott_id` (FK) | Species images | image_url, attribution (jsonb) |
@@ -256,17 +256,19 @@ All under FastAPI with CORS enabled (all origins).
 Run via Makefile or directly as `python -m evograph.pipeline.<name>`:
 
 ```
-1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (--scope, --strategy api|chunked, --resume)
-2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences (genus fallback, --skip-existing, NCBI_API_KEY)
-   ingest_bold     — Fetch COI from BOLD portal → sequences table (portal down)
-3. dedup_sequences — Remove duplicate accessions, keep longest (--dry-run supported)
-4. select_canonical — Score sequences (length - 10*ambig), mark best per species
-5. build_kmer_index — Build FAISS k-mer ANN index from canonical sequences
-6. build_neighbors  — Pairwise alignment + MI distance → kNN edges (--strategy family|kmer, --k 15)
+1. ingest_ott        — Parse OpenTree Newick subtree → taxa table (--scope, --strategy api|chunked, --resume)
+2. ingest_ncbi       — Fetch COI from NCBI GenBank → sequences (genus fallback, --skip-existing, NCBI_API_KEY)
+   ingest_bold       — Fetch COI from BOLD portal → sequences table (portal down)
+3. dedup_sequences   — Remove duplicate accessions, keep longest (--dry-run supported)
+4. select_canonical  — Score sequences (length - 10*ambig), mark best per species
+5. build_kmer_index  — Build FAISS k-mer ANN index from canonical sequences
+6. build_neighbors   — Pairwise alignment + MI distance → kNN edges (--strategy family|kmer, --k 15)
 7. build_graph_export — Export nodes.json + edges.json
-8. ingest_images   — Wikipedia thumbnails → node_media table
+8. ingest_images     — Wikipedia thumbnails → node_media table (all species, skips extinct)
 9. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
-10. validate       — Print quality report (genus/family sharing %, distance stats, --output for JSON)
+10. backfill_extinct  — Query OpenTree taxon_info flags → is_extinct column
+11. backfill_lineage  — Recursive CTE → lineage int[] column (root → parent chain)
+12. validate          — Print quality report (genus/family sharing %, distance stats, --output for JSON)
 ```
 
 **Full pipeline:** `make pipeline` runs steps 1-7 in sequence.
@@ -337,7 +339,7 @@ NCBI_API_KEY=                         # Optional: enables 10 req/s vs 3 req/s
 
 ## Testing Strategy
 
-**Current: 203 tests passing** (121 API + 82 frontend)
+**Current: 204 tests passing** (121 API + 83 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from/count), `MockDB` (registry by model type + execute for CTEs)
@@ -411,19 +413,15 @@ The following types must stay in sync across three layers:
 |--------|-------|
 | Total taxa | 60,405 (Aves + Mammalia) |
 | Species (total) | 38,281 |
-| Species with COI | 539 (1.4%) |
-| Total sequences | 1,914 |
-| MI edges | 3,272 |
-| Species images | 2,725 |
-| MI network nodes | 257 |
-| MI network edges | 2,326 |
+| Species with COI | 620 (1.6%) |
+| Total sequences | 2,175 |
+| MI edges | 10,484 |
+| Species images | 4,952 |
+| Extinct taxa | 19,204 (31.8%) |
+| Extant taxa | 41,201 (68.2%) |
+| Lineage populated | 60,403 / 60,405 |
 
 **Clades ingested:** Aves (~27,853 taxa), Mammalia (~32,552 taxa)
-
-**Validation results (last run):**
-- 70.5% of nearest neighbors share the same family
-- 44.6% of nearest neighbors share the same genus
-- Zero cross-family outliers detected
 
 **Coverage is low because:**
 - NCBI COI gene annotations are narrow; many species lack annotated COI sequences
