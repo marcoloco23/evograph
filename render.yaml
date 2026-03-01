@@ -5,6 +5,7 @@ services:
     dockerfilePath: apps/api/Dockerfile
     dockerContext: apps/api
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
