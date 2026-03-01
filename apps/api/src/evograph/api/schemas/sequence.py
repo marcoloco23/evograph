@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 from datetime import datetime
+
+from pydantic import BaseModel
+
 
 class SequenceOut(BaseModel):
     id: str
@@ -11,3 +13,10 @@ class SequenceOut(BaseModel):
     length: int
     is_canonical: bool
     retrieved_at: datetime | None = None
+
+
+class SequencePage(BaseModel):
+    items: list[SequenceOut]
+    total: int
+    offset: int
+    limit: int

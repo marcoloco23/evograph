@@ -18,7 +18,7 @@ const mockSearchTaxa = searchTaxa as jest.MockedFunction<typeof searchTaxa>;
 describe("SearchBox", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSearchTaxa.mockResolvedValue([]);
+    mockSearchTaxa.mockResolvedValue({ items: [], total: 0, limit: 20 });
   });
 
   it("renders the search input", () => {
@@ -39,9 +39,11 @@ describe("SearchBox", () => {
 
   it("calls searchTaxa after debounce for 2+ characters", async () => {
     const user = userEvent.setup();
-    mockSearchTaxa.mockResolvedValue([
-      { ott_id: 1, name: "Corvus", rank: "genus", child_count: 5, image_url: null },
-    ]);
+    mockSearchTaxa.mockResolvedValue({
+      items: [{ ott_id: 1, name: "Corvus", rank: "genus", child_count: 5, image_url: null }],
+      total: 1,
+      limit: 20,
+    });
     render(<SearchBox />);
     const input = screen.getByPlaceholderText(/search taxa/i);
     await user.type(input, "cor");
@@ -53,10 +55,14 @@ describe("SearchBox", () => {
 
   it("shows dropdown results", async () => {
     const user = userEvent.setup();
-    mockSearchTaxa.mockResolvedValue([
-      { ott_id: 187411, name: "Corvidae", rank: "family", child_count: 10, image_url: null },
-      { ott_id: 369568, name: "Corvus", rank: "genus", child_count: 5, image_url: null },
-    ]);
+    mockSearchTaxa.mockResolvedValue({
+      items: [
+        { ott_id: 187411, name: "Corvidae", rank: "family", child_count: 10, image_url: null },
+        { ott_id: 369568, name: "Corvus", rank: "genus", child_count: 5, image_url: null },
+      ],
+      total: 2,
+      limit: 20,
+    });
     render(<SearchBox />);
     const input = screen.getByPlaceholderText(/search taxa/i);
     await user.type(input, "corv");
@@ -69,9 +75,11 @@ describe("SearchBox", () => {
 
   it("navigates on result selection", async () => {
     const user = userEvent.setup();
-    mockSearchTaxa.mockResolvedValue([
-      { ott_id: 187411, name: "Corvidae", rank: "family", child_count: 10, image_url: null },
-    ]);
+    mockSearchTaxa.mockResolvedValue({
+      items: [{ ott_id: 187411, name: "Corvidae", rank: "family", child_count: 10, image_url: null }],
+      total: 1,
+      limit: 20,
+    });
     render(<SearchBox />);
     const input = screen.getByPlaceholderText(/search taxa/i);
     await user.type(input, "corv");

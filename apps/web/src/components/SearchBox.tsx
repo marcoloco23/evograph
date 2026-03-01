@@ -27,8 +27,8 @@ export default function SearchBox() {
       setIsLoading(true);
       try {
         const data = await searchTaxa(query.trim());
-        setResults(data);
-        setIsOpen(data.length > 0);
+        setResults(data.items);
+        setIsOpen(data.items.length > 0);
       } catch {
         setResults([]);
       } finally {

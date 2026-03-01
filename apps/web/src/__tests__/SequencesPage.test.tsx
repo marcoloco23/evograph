@@ -78,7 +78,7 @@ describe("SequencesPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (getTaxon as jest.Mock).mockResolvedValue(mockTaxon);
-    (getSequences as jest.Mock).mockResolvedValue(mockSequences);
+    (getSequences as jest.Mock).mockResolvedValue({ items: mockSequences, total: 2, offset: 0, limit: 50 });
   });
 
   it("shows loading skeleton initially", () => {
@@ -137,7 +137,7 @@ describe("SequencesPage", () => {
   });
 
   it("shows empty state when no sequences", async () => {
-    (getSequences as jest.Mock).mockResolvedValue([]);
+    (getSequences as jest.Mock).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 50 });
     render(<SequencesPage />);
     await waitFor(() => {
       expect(screen.getByText(/No COI sequences found/)).toBeInTheDocument();

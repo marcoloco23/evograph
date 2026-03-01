@@ -25,6 +25,12 @@ export interface ChildrenPage {
   limit: number;
 }
 
+export interface SearchPage {
+  items: TaxonSummary[];
+  total: number;
+  limit: number;
+}
+
 export interface SequenceOut {
   id: string;
   ott_id: number;
@@ -35,6 +41,13 @@ export interface SequenceOut {
   length: number;
   is_canonical: boolean;
   retrieved_at: string | null;
+}
+
+export interface SequencePage {
+  items: SequenceOut[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface GraphNode {

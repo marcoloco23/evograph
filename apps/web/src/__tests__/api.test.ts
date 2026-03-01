@@ -124,15 +124,15 @@ describe("API client", () => {
   });
 
   describe("getSequences", () => {
-    it("fetches correct endpoint", async () => {
+    it("fetches correct endpoint with pagination", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve([]),
+        json: () => Promise.resolve({ items: [], total: 0, offset: 0, limit: 50 }),
       });
 
       await getSequences(123);
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/taxa/123/sequences"),
+        expect.stringContaining("/v1/taxa/123/sequences?offset=0&limit=50"),
         expect.anything()
       );
     });

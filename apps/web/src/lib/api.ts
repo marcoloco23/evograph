@@ -1,4 +1,4 @@
-import type { TaxonSummary, TaxonDetail, ChildrenPage, GraphResponse, NeighborOut, SequenceOut, StatsResponse } from "./types";
+import type { TaxonDetail, SearchPage, ChildrenPage, SequencePage, GraphResponse, NeighborOut, StatsResponse } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -11,7 +11,7 @@ export async function getJSON<T>(path: string): Promise<T> {
 }
 
 export function searchTaxa(query: string, limit = 20) {
-  return getJSON<TaxonSummary[]>(
+  return getJSON<SearchPage>(
     `/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`
   );
 }
@@ -36,8 +36,8 @@ export function getChildren(ottId: number, offset = 0, limit = 100) {
   return getJSON<ChildrenPage>(`/v1/taxa/${ottId}/children?offset=${offset}&limit=${limit}`);
 }
 
-export function getSequences(ottId: number) {
-  return getJSON<SequenceOut[]>(`/v1/taxa/${ottId}/sequences`);
+export function getSequences(ottId: number, offset = 0, limit = 50) {
+  return getJSON<SequencePage>(`/v1/taxa/${ottId}/sequences?offset=${offset}&limit=${limit}`);
 }
 
 export function getStats() {

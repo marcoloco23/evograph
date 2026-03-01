@@ -15,18 +15,32 @@ class TestSearchTaxa:
         assert resp.status_code == 200
 
         data = resp.json()
-        assert len(data) == 2
-        assert data[0]["name"] == "Corvidae"
-        assert data[0]["ott_id"] == 187411
-        assert data[0]["rank"] == "family"
-        assert data[1]["name"] == "Corvus"
+        items = data["items"]
+        assert len(items) == 2
+        assert items[0]["name"] == "Corvidae"
+        assert items[0]["ott_id"] == 187411
+        assert items[0]["rank"] == "family"
+        assert items[1]["name"] == "Corvus"
+
+    def test_search_returns_total_count(self, client, mock_db):
+        mock_db.set(Taxon, [
+            _make_taxon(187411, "Corvidae", "family"),
+        ])
+
+        resp = client.get("/v1/search", params={"q": "corv"})
+        data = resp.json()
+        assert "total" in data
+        assert "limit" in data
+        assert data["total"] == 0  # MockDB scalar returns 0
 
     def test_search_returns_empty_for_no_match(self, client, mock_db):
         mock_db.set(Taxon, [])
 
         resp = client.get("/v1/search", params={"q": "zzzzzzz"})
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_search_requires_query(self, client):
         resp = client.get("/v1/search")
@@ -37,6 +51,7 @@ class TestSearchTaxa:
 
         resp = client.get("/v1/search", params={"q": "corv", "limit": 1})
         assert resp.status_code == 200
+        assert resp.json()["limit"] == 1
 
     def test_search_rejects_empty_query(self, client):
         resp = client.get("/v1/search", params={"q": ""})
@@ -46,5 +61,7 @@ class TestSearchTaxa:
         mock_db.set(Taxon, [_make_taxon(100, "Falco", "genus")])
 
         resp = client.get("/v1/search", params={"q": "falco"})
-        item = resp.json()[0]
+        data = resp.json()
+        assert set(data.keys()) >= {"items", "total", "limit"}
+        item = data["items"][0]
         assert set(item.keys()) >= {"ott_id", "name", "rank"}

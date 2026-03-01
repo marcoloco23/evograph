@@ -36,7 +36,7 @@ evograph/
 │   │   ├── Dockerfile                # Health check included
 │   │   ├── alembic.ini
 │   │   ├── src/evograph/
-│   │   │   ├── main.py               # FastAPI app, CORS, rate limiting, logging, routers
+│   │   │   ├── main.py               # FastAPI app, lifespan, CORS, rate limiting, logging, health
 │   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT, CORS_ORIGINS
 │   │   │   ├── db/
 │   │   │   │   ├── models.py         # Taxon, Sequence, Edge, NodeMedia
@@ -67,7 +67,7 @@ evograph/
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 99 pytest tests
+│   │   └── tests/                    # 103 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -159,11 +159,12 @@ All under FastAPI with CORS enabled (all origins).
 
 | Method | Path | Params | Response | Notes |
 |--------|------|--------|----------|-------|
-| GET | `/health` | — | `{"status":"ok","scope":"Aves"}` | Includes configured scope |
-| GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `TaxonSummary[]` | pg_trgm + prefix ranking |
+| GET | `/health` | — | `{"status":"ok","scope":"Aves"}` | Liveness check |
+| GET | `/health/ready` | — | `{"status":"ok","database":{...}}` | Readiness + pool stats |
+| GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `SearchPage` | pg_trgm + prefix ranking, total count |
 | GET | `/v1/taxa/{ott_id}` | — | `TaxonDetail` | Recursive CTE lineage |
 | GET | `/v1/taxa/{ott_id}/children` | `offset`, `limit` (max 500) | `ChildrenPage` | Paginated |
-| GET | `/v1/taxa/{ott_id}/sequences` | — | `SequenceOut[]` | Includes DNA sequence text |
+| GET | `/v1/taxa/{ott_id}/sequences` | `offset`, `limit` (max 200) | `SequencePage` | Paginated |
 | GET | `/v1/graph/subtree/{ott_id}` | `depth` (1-5, default 3) | `GraphResponse` | Recursive CTE subtree |
 | GET | `/v1/graph/mi-network` | — | `GraphResponse` | Cached 5min in-memory |
 | GET | `/v1/graph/neighbors/{ott_id}` | `k` (1-50, default 15) | `NeighborOut[]` | Sorted by distance |
@@ -171,6 +172,8 @@ All under FastAPI with CORS enabled (all origins).
 
 **Key response types:**
 - `TaxonDetail`: includes children[], total_children, lineage[], has_canonical_sequence, wikipedia_url
+- `SearchPage`: items[] + total + limit (paginated search results)
+- `SequencePage`: items[] + total + offset + limit (paginated sequences)
 - `GraphResponse`: nodes[] + edges[] (kind: "taxonomy" | "mi")
 - `SequenceOut`: includes full DNA sequence text, source, accession, is_canonical
 
@@ -227,10 +230,10 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (96 tests)
+# API tests (103 tests)
 cd apps/api && python -m pytest tests/ -v
 
-# Frontend tests (64 tests)
+# Frontend tests (71 tests)
 cd apps/web && npm test
 
 # Lint
@@ -255,7 +258,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 ## Testing Strategy
 
-**Current: 160 tests passing** (96 API + 64 frontend)
+**Current: 174 tests passing** (103 API + 71 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
@@ -305,7 +308,9 @@ The following types must stay in sync across three layers:
 | `TaxonSummary` | `TaxonSummary` | `Taxon` |
 | `TaxonDetail` | `TaxonDetail` | `Taxon` + joins |
 | `ChildrenPage` | `ChildrenPage` | — |
+| `SearchPage` | `SearchPage` | — |
 | `SequenceOut` | `SequenceOut` | `Sequence` |
+| `SequencePage` | `SequencePage` | — |
 | `Node` / `GraphEdge` / `GraphResponse` | `GraphNode` / `GraphEdge` / `GraphResponse` | `Taxon` + `Edge` |
 | `NeighborOut` | `NeighborOut` | `Edge` + `Taxon` join |
 | (inline dict) | `StatsResponse` | Aggregation queries |
@@ -366,13 +371,15 @@ The following types must stay in sync across three layers:
 - **MI network:** In-memory cache with 5-minute TTL
 - **Neighbor queries:** Composite index (src_ott_id, distance) for indexed ORDER BY + LIMIT
 - **Rate limiting:** Sliding-window per-IP (100 req/min), /health excluded, X-RateLimit headers
+- **Graceful shutdown:** Lifespan context manager disposes connection pool on SIGTERM
+- **Readiness probe:** /health/ready checks DB connectivity and reports pool stats
 
 ## Known Gotchas
 
 - `pyproject.toml` requires Python >=3.11 (relaxed from 3.12 for compatibility)
 - Build backend is `hatchling.build` (not `hatchling.backends`)
 - Redis is configured but not used yet (reserved for caching)
-- CORS is wide open (`allow_origins=["*"]`) — tighten for production
+- CORS defaults to `["*"]` — set `CORS_ORIGINS` env var for production
 - `data/raw/` and `data/processed/` are gitignored — not in repo
 - Graph JSON exports exist at `apps/api/src/data/processed/graph/` but are gitignored
 - Sequence `quality` field is JSONB with `{"ambig": N}` format
