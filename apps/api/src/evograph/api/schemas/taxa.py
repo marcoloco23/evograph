@@ -7,6 +7,7 @@ class TaxonSummary(BaseModel):
     rank: str
     child_count: int = 0
     image_url: str | None = None
+    is_extinct: bool | None = None
 
 
 class TaxonDetail(BaseModel):
@@ -16,6 +17,7 @@ class TaxonDetail(BaseModel):
     parent_ott_id: int | None = None
     parent_name: str | None = None
     ncbi_tax_id: int | None = None
+    is_extinct: bool | None = None
     children: list[TaxonSummary] = []
     total_children: int = 0
     has_canonical_sequence: bool = False

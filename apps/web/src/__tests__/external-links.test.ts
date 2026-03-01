@@ -1,4 +1,4 @@
-import { wikipediaUrl, inaturalistUrl, ebirdUrl } from "../lib/external-links";
+import { wikipediaUrl, inaturalistUrl, gbifUrl, ncbiUrl } from "../lib/external-links";
 
 describe("external-links", () => {
   describe("wikipediaUrl", () => {
@@ -23,10 +23,18 @@ describe("external-links", () => {
     });
   });
 
-  describe("ebirdUrl", () => {
+  describe("gbifUrl", () => {
     it("encodes name for search", () => {
-      expect(ebirdUrl("Corvus corax")).toBe(
-        "https://ebird.org/species/search?q=Corvus%20corax"
+      expect(gbifUrl("Corvus corax")).toBe(
+        "https://www.gbif.org/species/search?q=Corvus%20corax"
+      );
+    });
+  });
+
+  describe("ncbiUrl", () => {
+    it("builds taxonomy browser URL from tax ID", () => {
+      expect(ncbiUrl(56781)).toBe(
+        "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=56781"
       );
     });
   });

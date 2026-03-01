@@ -4,12 +4,14 @@ export interface TaxonSummary {
   rank: string;
   child_count: number;
   image_url: string | null;
+  is_extinct?: boolean | null;
 }
 
 export interface TaxonDetail extends TaxonSummary {
   parent_ott_id: number | null;
   parent_name: string | null;
   ncbi_tax_id: number | null;
+  is_extinct?: boolean | null;
   children: TaxonSummary[];
   total_children: number;
   has_canonical_sequence: boolean;

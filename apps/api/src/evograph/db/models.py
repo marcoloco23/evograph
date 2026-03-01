@@ -39,6 +39,7 @@ class Taxon(Base):
     ncbi_tax_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bold_tax_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     synonyms: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    is_extinct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Relationships
     parent: Mapped[Taxon | None] = relationship(

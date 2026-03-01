@@ -11,7 +11,7 @@ const RANK_COLORS: Record<string, string> = {
   subspecies: "#4dd0e1",
 };
 
-export default function TaxonCard({ ott_id, name, rank, child_count, image_url }: TaxonSummary) {
+export default function TaxonCard({ ott_id, name, rank, child_count, image_url, is_extinct }: TaxonSummary) {
   const isSpecies = rank === "species" || rank === "subspecies";
   const accent = RANK_COLORS[rank] ?? "#888";
 
@@ -27,6 +27,9 @@ export default function TaxonCard({ ott_id, name, rank, child_count, image_url }
           </div>
           <div className="flex gap-sm" style={{ alignItems: "center", marginTop: "0.25rem" }}>
             <span className="badge" style={{ background: accent, color: "#000" }}>{rank}</span>
+            {is_extinct && (
+              <span className="badge" style={{ background: "#78909c", color: "#fff", fontSize: "0.65rem" }}>extinct</span>
+            )}
             {child_count > 0 && (
               <span className="taxon-card-count">{child_count}</span>
             )}

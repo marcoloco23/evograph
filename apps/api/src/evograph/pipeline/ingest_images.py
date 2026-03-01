@@ -63,18 +63,18 @@ def run() -> None:
         )
         log.info("Already have %d images in node_media", len(existing))
 
-        # Get species with canonical sequences first (most important)
-        canonical_species = db.execute(
+        # Get ALL species (not just canonical — every species deserves a thumbnail)
+        all_species = db.execute(
             text("""
-                SELECT DISTINCT t.ott_id, t.name
+                SELECT t.ott_id, t.name
                 FROM taxa t
-                JOIN sequences s ON s.ott_id = t.ott_id AND s.is_canonical = true
                 WHERE t.rank IN ('species', 'subspecies')
+                  AND (t.is_extinct IS NULL OR t.is_extinct = false)
                 ORDER BY t.name
             """)
         ).all()
 
-        # Also get genera and families for broader coverage
+        # Also get genera, families, orders for broader coverage
         higher_taxa = db.execute(
             text("""
                 SELECT t.ott_id, t.name
@@ -84,11 +84,11 @@ def run() -> None:
             """)
         ).all()
 
-        targets = [(ott_id, name) for ott_id, name in canonical_species if ott_id not in existing]
+        targets = [(ott_id, name) for ott_id, name in all_species if ott_id not in existing]
         higher_targets = [(ott_id, name) for ott_id, name in higher_taxa if ott_id not in existing]
 
         log.info(
-            "Fetching images: %d canonical species, %d higher taxa to process",
+            "Fetching images: %d species, %d higher taxa to process",
             len(targets), len(higher_targets),
         )
 

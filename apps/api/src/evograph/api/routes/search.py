@@ -58,7 +58,7 @@ def search_taxa(
     )
     return SearchPage(
         items=[
-            TaxonSummary(ott_id=t.ott_id, name=t.name, rank=t.rank) for t in rows
+            TaxonSummary(ott_id=t.ott_id, name=t.name, rank=t.rank, is_extinct=t.is_extinct) for t in rows
         ],
         total=total,
         limit=limit,

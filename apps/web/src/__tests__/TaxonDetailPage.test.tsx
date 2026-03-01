@@ -111,7 +111,7 @@ describe("TaxonDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Wikipedia")).toBeInTheDocument();
       expect(screen.getByText("iNaturalist")).toBeInTheDocument();
-      expect(screen.getByText("eBird")).toBeInTheDocument();
+      expect(screen.getByText("GBIF")).toBeInTheDocument();
     });
   });
 

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { getTaxon, getNeighbors, getSubtreeGraph, getChildren } from "@/lib/api";
-import { wikipediaUrl, inaturalistUrl, ebirdUrl } from "@/lib/external-links";
+import { wikipediaUrl, inaturalistUrl, gbifUrl, ncbiUrl } from "@/lib/external-links";
 import type { TaxonDetail, TaxonSummary, NeighborOut, GraphResponse } from "@/lib/types";
 import TaxonCard from "@/components/TaxonCard";
 import { TaxonDetailSkeleton } from "@/components/Skeleton";
@@ -214,10 +214,15 @@ export default function TaxonDetailPage() {
           <h1 className="hero-title">
             <span className={isSpecies ? "italic" : ""}>{taxon.name}</span>
           </h1>
-          <div className="flex gap-sm" style={{ alignItems: "center", marginTop: "0.5rem" }}>
+          <div className="flex gap-sm" style={{ alignItems: "center", marginTop: "0.5rem", flexWrap: "wrap" }}>
             <span className="badge" style={{ background: rankColor(taxon.rank), color: "#000" }}>
               {taxon.rank}
             </span>
+            {taxon.is_extinct && (
+              <span className="badge" style={{ background: "#78909c", color: "#fff" }}>
+                extinct
+              </span>
+            )}
             <span style={{ color: "#888", fontSize: "0.85rem" }}>OTT {taxon.ott_id}</span>
             {taxon.ncbi_tax_id && (
               <span style={{ color: "#888", fontSize: "0.85rem" }}>NCBI {taxon.ncbi_tax_id}</span>
@@ -232,9 +237,14 @@ export default function TaxonDetailPage() {
             <a href={inaturalistUrl(taxon.name)} target="_blank" rel="noopener noreferrer" className="ext-link">
               iNaturalist
             </a>
-            <a href={ebirdUrl(taxon.name)} target="_blank" rel="noopener noreferrer" className="ext-link">
-              eBird
+            <a href={gbifUrl(taxon.name)} target="_blank" rel="noopener noreferrer" className="ext-link">
+              GBIF
             </a>
+            {taxon.ncbi_tax_id && (
+              <a href={ncbiUrl(taxon.ncbi_tax_id)} target="_blank" rel="noopener noreferrer" className="ext-link">
+                NCBI Taxonomy
+              </a>
+            )}
             {taxon.has_canonical_sequence && (
               <Link href={`/taxa/${taxon.ott_id}/sequences`} className="ext-link">
                 COI Sequences

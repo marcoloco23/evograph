@@ -118,6 +118,7 @@ def get_taxon(
         parent_ott_id=taxon.parent_ott_id,
         parent_name=parent_name,
         ncbi_tax_id=taxon.ncbi_tax_id,
+        is_extinct=taxon.is_extinct,
         children=[
             TaxonSummary(
                 ott_id=c.ott_id,
@@ -125,6 +126,7 @@ def get_taxon(
                 rank=c.rank,
                 child_count=child_counts.get(c.ott_id, 0),
                 image_url=child_images.get(c.ott_id),
+                is_extinct=c.is_extinct,
             )
             for c in children
         ],
@@ -191,6 +193,7 @@ def get_children(
                 rank=c.rank,
                 child_count=child_counts.get(c.ott_id, 0),
                 image_url=child_images.get(c.ott_id),
+                is_extinct=c.is_extinct,
             )
             for c in children
         ],
