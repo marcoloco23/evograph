@@ -64,6 +64,8 @@ export interface GraphEdge {
   dst: number;
   kind: "taxonomy" | "mi";
   distance: number | null;
+  mi_norm: number | null;
+  align_len: number | null;
 }
 
 export interface GraphResponse {
@@ -77,6 +79,8 @@ export interface NeighborOut {
   rank: string;
   distance: number;
   mi_norm: number;
+  align_len: number;
+  shared_rank: string | null;
 }
 
 export interface StatsResponse {

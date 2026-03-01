@@ -98,25 +98,48 @@ function StatsBar({ items }: { items: TaxonSummary[] }) {
   );
 }
 
+// ── shared rank colors ──────────────────────────────
+const SHARED_RANK_COLORS: Record<string, string> = {
+  genus: "#81c784",
+  family: "#fff176",
+  subfamily: "#dce775",
+  order: "#ffb74d",
+  class: "#e57373",
+};
+
 // ── neighbor card ───────────────────────────────────
-function NeighborCard({ neighbor, maxDist }: { neighbor: NeighborOut; maxDist: number }) {
-  // Similarity: 1 = identical, 0 = maximally distant
-  const similarity = Math.max(0, 1 - neighbor.distance / maxDist);
-  const pct = Math.round(similarity * 100);
-  // Color: green (similar) → orange (distant)
-  const hue = Math.round(similarity * 120); // 120=green, 0=red
+function NeighborCard({ neighbor }: { neighbor: NeighborOut }) {
+  // Use actual NMI (normalized mutual information) as similarity percentage
+  const nmiPct = Math.round(neighbor.mi_norm * 100);
+  // Color: green (high NMI) → red (low NMI)
+  const hue = Math.round(neighbor.mi_norm * 120); // 120=green, 0=red
   const barColor = `hsl(${hue}, 70%, 50%)`;
 
   return (
     <Link href={`/taxa/${neighbor.ott_id}`} className="neighbor-card">
-      <div className="neighbor-bar-bg" style={{ width: `${pct}%`, background: barColor }} />
+      <div className="neighbor-bar-bg" style={{ width: `${nmiPct}%`, background: barColor }} />
       <div className="neighbor-card-content">
-        <span className={neighbor.rank === "species" ? "italic" : ""}>
-          {neighbor.name}
-        </span>
-        <span className="neighbor-similarity" style={{ color: barColor }}>
-          {pct}% similar
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
+          <span className={neighbor.rank === "species" ? "italic" : ""} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {neighbor.name}
+          </span>
+          {neighbor.shared_rank && (
+            <span
+              className="neighbor-shared-rank"
+              style={{ background: SHARED_RANK_COLORS[neighbor.shared_rank] ?? "#666", color: "#000" }}
+            >
+              {neighbor.shared_rank}
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <span className="neighbor-similarity" style={{ color: barColor }}>
+            {nmiPct}% NMI
+          </span>
+          <span className="neighbor-meta">
+            {neighbor.align_len} cols
+          </span>
+        </div>
       </div>
     </Link>
   );
@@ -179,9 +202,9 @@ export default function TaxonDetailPage() {
   const showGraph = hasMiEdges && neighbors.length > 0;
   const grouped = groupByRank(allChildren);
   const hasMoreChildren = allChildren.length < taxon.total_children;
-  const neighborMaxDist = neighbors.length > 0
-    ? Math.max(...neighbors.map((n) => n.distance)) * 1.1  // 10% headroom
-    : 1;
+  // Count how many neighbors share genus vs family for the summary
+  const genusCount = neighbors.filter((n) => n.shared_rank === "genus").length;
+  const familyCount = neighbors.filter((n) => n.shared_rank === "family" || n.shared_rank === "subfamily").length;
 
   return (
     <div>
@@ -322,9 +345,27 @@ export default function TaxonDetailPage() {
           {neighbors.length > 0 && (
             <section>
               <h2 style={sectionTitle}>MI Neighbors ({neighbors.length})</h2>
+              <div className="neighbor-coherence">
+                <span>Taxonomic coherence:</span>
+                {genusCount > 0 && (
+                  <span style={{ color: "#81c784" }}>
+                    {genusCount} same genus
+                  </span>
+                )}
+                {familyCount > 0 && (
+                  <span style={{ color: "#fff176" }}>
+                    {familyCount} same family
+                  </span>
+                )}
+                {neighbors.length - genusCount - familyCount > 0 && (
+                  <span style={{ color: "#e57373" }}>
+                    {neighbors.length - genusCount - familyCount} cross-family
+                  </span>
+                )}
+              </div>
               <div className="neighbor-grid">
                 {neighbors.map((n) => (
-                  <NeighborCard key={n.ott_id} neighbor={n} maxDist={neighborMaxDist} />
+                  <NeighborCard key={n.ott_id} neighbor={n} />
                 ))}
               </div>
             </section>

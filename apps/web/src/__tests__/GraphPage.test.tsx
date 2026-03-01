@@ -24,9 +24,9 @@ const mockGraph = {
     { ott_id: 3, name: "Corvus", rank: "genus", image_url: null },
   ],
   edges: [
-    { src: 1, dst: 2, kind: "mi" as const, distance: 0.15 },
-    { src: 3, dst: 1, kind: "taxonomy" as const, distance: null },
-    { src: 3, dst: 2, kind: "taxonomy" as const, distance: null },
+    { src: 1, dst: 2, kind: "mi" as const, distance: 0.15, mi_norm: 0.85, align_len: 600 },
+    { src: 3, dst: 1, kind: "taxonomy" as const, distance: null, mi_norm: null, align_len: null },
+    { src: 3, dst: 2, kind: "taxonomy" as const, distance: null, mi_norm: null, align_len: null },
   ],
 };
 
@@ -112,5 +112,16 @@ describe("GraphPage", () => {
     mockGetMiNetwork.mockReturnValue(new Promise(() => {}));
     render(<GraphPage />);
     expect(screen.queryByPlaceholderText("Search nodes...")).not.toBeInTheDocument();
+  });
+
+  it("shows MI metrics summary after loading", async () => {
+    mockGetMiNetwork.mockResolvedValue(mockGraph);
+    render(<GraphPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Avg NMI")).toBeInTheDocument();
+      expect(screen.getByText("Median")).toBeInTheDocument();
+      expect(screen.getByText("Range")).toBeInTheDocument();
+    });
   });
 });

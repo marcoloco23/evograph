@@ -92,12 +92,36 @@ export default function GraphPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const miEdges = graph ? graph.edges.filter((e) => e.kind === "mi") : [];
+  const miCount = miEdges.length;
+  const speciesCount = graph ? graph.nodes.length : 0;
+
+  // Compute MI metrics summary
+  const miStats = useMemo(() => {
+    if (miEdges.length === 0) return null;
+    const nmiValues = miEdges
+      .map((e) => e.mi_norm)
+      .filter((v): v is number => v != null);
+    if (nmiValues.length === 0) return null;
+
+    nmiValues.sort((a, b) => a - b);
+    const sum = nmiValues.reduce((a, b) => a + b, 0);
+    const avg = sum / nmiValues.length;
+    const median = nmiValues[Math.floor(nmiValues.length / 2)];
+    const min = nmiValues[0];
+    const max = nmiValues[nmiValues.length - 1];
+
+    // Distribution buckets for NMI similarity
+    const highSim = nmiValues.filter((v) => v >= 0.7).length;
+    const medSim = nmiValues.filter((v) => v >= 0.4 && v < 0.7).length;
+    const lowSim = nmiValues.filter((v) => v < 0.4).length;
+
+    return { avg, median, min, max, highSim, medSim, lowSim, total: nmiValues.length };
+  }, [miEdges]);
+
   if (error) {
     return <div className="error">Failed to load graph: {error}</div>;
   }
-
-  const miCount = graph ? graph.edges.filter((e) => e.kind === "mi").length : 0;
-  const speciesCount = graph ? graph.nodes.length : 0;
 
   return (
     <div>
@@ -108,7 +132,7 @@ export default function GraphPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", gap: "0.75rem" }}>
         <p style={{ color: "#666", fontSize: "0.85rem", margin: 0, flex: 1 }}>
           Species with COI barcodes connected by mutual information similarity.
-          Closer species have thicker, brighter edges. Hover to highlight, click to view details.
+          Closer species have thicker, brighter edges. Hover edges for MI metrics, click nodes to view details.
         </p>
 
         {graph && !loading && (
@@ -120,6 +144,37 @@ export default function GraphPage() {
           </div>
         )}
       </div>
+
+      {/* MI Metrics Summary */}
+      {miStats && !loading && (
+        <div className="mi-stats-bar">
+          <div className="mi-stats-item">
+            <span className="mi-stats-label">Avg NMI</span>
+            <span className="mi-stats-value">{Math.round(miStats.avg * 100)}%</span>
+          </div>
+          <div className="mi-stats-item">
+            <span className="mi-stats-label">Median</span>
+            <span className="mi-stats-value">{Math.round(miStats.median * 100)}%</span>
+          </div>
+          <div className="mi-stats-item">
+            <span className="mi-stats-label">Range</span>
+            <span className="mi-stats-value">{Math.round(miStats.min * 100)}–{Math.round(miStats.max * 100)}%</span>
+          </div>
+          <span className="mi-stats-sep" />
+          <div className="mi-stats-item">
+            <span className="mi-stats-label" style={{ color: "#81c784" }}>High (&ge;70%)</span>
+            <span className="mi-stats-value">{miStats.highSim}</span>
+          </div>
+          <div className="mi-stats-item">
+            <span className="mi-stats-label" style={{ color: "#ffb74d" }}>Medium (40–70%)</span>
+            <span className="mi-stats-value">{miStats.medSim}</span>
+          </div>
+          <div className="mi-stats-item">
+            <span className="mi-stats-label" style={{ color: "#e57373" }}>Low (&lt;40%)</span>
+            <span className="mi-stats-value">{miStats.lowSim}</span>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <GraphPageSkeleton />

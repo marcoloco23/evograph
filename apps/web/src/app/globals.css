@@ -211,6 +211,82 @@ input:focus {
   color: #555;
 }
 
+/* ── Edge tooltip ────────────────────────────────── */
+
+.graph-edge-tooltip {
+  position: absolute;
+  z-index: 1000;
+  background: rgba(15, 18, 28, 0.95);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  pointer-events: none;
+  max-width: 320px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.graph-edge-tooltip-names {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.8rem;
+  margin-bottom: 0.35rem;
+  color: var(--fg);
+}
+
+.graph-edge-tooltip-metrics {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: #aaa;
+  font-variant-numeric: tabular-nums;
+}
+
+.graph-edge-tooltip-metrics strong {
+  color: #2a9d8f;
+}
+
+/* ── MI stats bar ────────────────────────────────── */
+
+.mi-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 0.85rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+}
+
+.mi-stats-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.mi-stats-label {
+  font-size: 0.65rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mi-stats-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.mi-stats-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+}
+
 /* ── Breadcrumbs ──────────────────────────────────── */
 
 .breadcrumbs {
@@ -565,6 +641,37 @@ input:focus {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.neighbor-meta {
+  font-size: 0.7rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.neighbor-shared-rank {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-transform: capitalize;
+}
+
+.neighbor-coherence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 /* ── Sequence viewer ─────────────────────────────── */

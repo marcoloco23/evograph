@@ -94,6 +94,8 @@ def get_subtree_graph(
                     dst=e.dst_ott_id,
                     kind="mi",
                     distance=e.distance,
+                    mi_norm=e.mi_norm,
+                    align_len=e.align_len,
                 )
             )
 
@@ -153,15 +155,15 @@ def get_mi_network(
 
     # Build MI edges — deduplicate to undirected (keep the one with lower distance
     # when both A->B and B->A exist, otherwise keep the single direction)
-    seen_pairs: dict[tuple[int, int], float] = {}
+    seen_pairs: dict[tuple[int, int], tuple[float, float, int]] = {}
     for e in all_edges:
         pair = (min(e.src_ott_id, e.dst_ott_id), max(e.src_ott_id, e.dst_ott_id))
-        if pair not in seen_pairs or e.distance < seen_pairs[pair]:
-            seen_pairs[pair] = e.distance
+        if pair not in seen_pairs or e.distance < seen_pairs[pair][0]:
+            seen_pairs[pair] = (e.distance, e.mi_norm, e.align_len)
 
     mi_edges = [
-        GraphEdge(src=a, dst=b, kind="mi", distance=dist)
-        for (a, b), dist in seen_pairs.items()
+        GraphEdge(src=a, dst=b, kind="mi", distance=dist, mi_norm=nmi, align_len=alen)
+        for (a, b), (dist, nmi, alen) in seen_pairs.items()
     ]
 
     # Add taxonomy edges: connect species to their parent genus/family
@@ -202,6 +204,27 @@ def get_mi_network(
     return result
 
 
+def _find_shared_rank(
+    src_lineage: list[int] | None,
+    dst_lineage: list[int] | None,
+    rank_lookup: dict[int, str],
+) -> str | None:
+    """Find the deepest shared taxonomic rank between two taxa.
+
+    Lineage arrays run from root -> parent (not including self).
+    Walk dst lineage from deepest to shallowest to find the first common ancestor.
+    """
+    if not src_lineage or not dst_lineage:
+        return None
+
+    src_set = set(src_lineage)
+    for ott_id in reversed(dst_lineage):
+        if ott_id in src_set:
+            return rank_lookup.get(ott_id)
+
+    return None
+
+
 @router.get("/graph/neighbors/{ott_id}", response_model=list[NeighborOut])
 def get_neighbors(
     ott_id: int,
@@ -211,7 +234,8 @@ def get_neighbors(
     """Get k nearest MI-neighbors for a taxon.
 
     Query Edge table where src_ott_id = ott_id, order by distance, limit k.
-    Join with Taxon to get name/rank.
+    Join with Taxon to get name/rank. Computes shared taxonomic rank
+    using lineage arrays to show taxonomy-vs-similarity coherence.
     """
     taxon = db.query(Taxon).filter(Taxon.ott_id == ott_id).first()
     if taxon is None:
@@ -226,6 +250,24 @@ def get_neighbors(
         .all()
     )
 
+    # Collect all lineage ott_ids to batch-lookup ranks
+    all_lineage_ids: set[int] = set()
+    src_lineage = taxon.lineage or []
+    all_lineage_ids.update(src_lineage)
+    for _e, t in rows:
+        if t.lineage:
+            all_lineage_ids.update(t.lineage)
+
+    # Batch-fetch ranks for all lineage ancestors
+    rank_lookup: dict[int, str] = {}
+    if all_lineage_ids:
+        ancestor_rows = (
+            db.query(Taxon.ott_id, Taxon.rank)
+            .filter(Taxon.ott_id.in_(all_lineage_ids))
+            .all()
+        )
+        rank_lookup = {ott: rank for ott, rank in ancestor_rows}
+
     return [
         NeighborOut(
             ott_id=t.ott_id,
@@ -233,6 +275,8 @@ def get_neighbors(
             rank=t.rank,
             distance=e.distance,
             mi_norm=e.mi_norm,
+            align_len=e.align_len,
+            shared_rank=_find_shared_rank(src_lineage, t.lineage, rank_lookup),
         )
         for e, t in rows
     ]

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Graph from "graphology";
 import Sigma from "sigma";
@@ -93,6 +93,8 @@ function buildGraph(data: GraphResponse, mode: "force" | "radial"): Graph {
         origColor: color,
         origSize: size,
         distance: dist,
+        miNorm: e.mi_norm,
+        alignLen: e.align_len,
       });
     } else if (mode === "radial") {
       // Only show taxonomy edges in tree mode, very faint
@@ -155,6 +157,15 @@ export default function GraphViewSigma({
   const graphRef = useRef<Graph | null>(null);
   const router = useRouter();
   const hoveredRef = useRef<string | null>(null);
+  const [edgeTooltip, setEdgeTooltip] = useState<{
+    x: number;
+    y: number;
+    srcName: string;
+    dstName: string;
+    miNorm: number;
+    distance: number;
+    alignLen: number | null;
+  } | null>(null);
 
   /** Highlight a node's neighborhood, dim everything else */
   const focusNode = useCallback((g: Graph, nodeId: string | null) => {
@@ -202,6 +213,7 @@ export default function GraphViewSigma({
       allowInvalidContainer: true,
       renderLabels: true,
       renderEdgeLabels: false,
+      enableEdgeEvents: true,
       defaultNodeColor: "#b5a7d5",
       defaultEdgeColor: blendWithBg(42, 157, 143, 0.08),
       labelColor: { color: "#9a958a" },
@@ -254,6 +266,28 @@ export default function GraphViewSigma({
       if (onNodeDoubleClick) onNodeDoubleClick(Number(node));
     });
 
+    // Edge hover → show MI metrics tooltip
+    sigma.on("enterEdge", ({ edge, event }) => {
+      const attr = g.getEdgeAttributes(edge);
+      if (attr.kind !== "mi") return;
+      const src = g.source(edge);
+      const dst = g.target(edge);
+      const srcName = g.getNodeAttribute(src, "label") as string;
+      const dstName = g.getNodeAttribute(dst, "label") as string;
+      setEdgeTooltip({
+        x: (event as unknown as { x: number }).x,
+        y: (event as unknown as { y: number }).y,
+        srcName,
+        dstName,
+        miNorm: attr.miNorm as number ?? 0,
+        distance: attr.distance as number ?? 0,
+        alignLen: attr.alignLen as number | null ?? null,
+      });
+    });
+    sigma.on("leaveEdge", () => {
+      setEdgeTooltip(null);
+    });
+
     return () => {
       ro.disconnect();
       sigma.kill();
@@ -285,6 +319,28 @@ export default function GraphViewSigma({
         className="graph-sigma-container"
         style={{ height }}
       />
+      {edgeTooltip && (
+        <div
+          className="graph-edge-tooltip"
+          style={{
+            left: edgeTooltip.x + 12,
+            top: edgeTooltip.y - 10,
+          }}
+        >
+          <div className="graph-edge-tooltip-names">
+            <span className="italic">{edgeTooltip.srcName}</span>
+            <span style={{ color: "#666" }}>&harr;</span>
+            <span className="italic">{edgeTooltip.dstName}</span>
+          </div>
+          <div className="graph-edge-tooltip-metrics">
+            <span>NMI: <strong>{Math.round(edgeTooltip.miNorm * 100)}%</strong></span>
+            <span>Distance: <strong>{edgeTooltip.distance.toFixed(3)}</strong></span>
+            {edgeTooltip.alignLen && (
+              <span>Alignment: <strong>{edgeTooltip.alignLen}</strong> cols</span>
+            )}
+          </div>
+        </div>
+      )}
       <div className="graph-legend">
         {LEGEND_RANKS.map((rank) => (
           <span key={rank} className="graph-legend-item">
