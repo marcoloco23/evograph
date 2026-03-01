@@ -15,6 +15,9 @@ type FilterKey = "all" | "with_sequences" | "with_edges";
 
 function SpeciesCard({ species }: { species: SpeciesSummary }) {
   const accent = RANK_COLORS[species.rank] ?? "#888";
+  const taxonomy = [species.order_name, species.family_name]
+    .filter(Boolean)
+    .join(" > ");
 
   return (
     <Link
@@ -30,7 +33,14 @@ function SpeciesCard({ species }: { species: SpeciesSummary }) {
           />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="italic taxon-card-name">{species.name}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", flexWrap: "wrap" }}>
+            <span className="italic taxon-card-name">{species.name}</span>
+            {taxonomy && (
+              <span style={{ fontSize: "0.75rem", color: "#666" }}>
+                {taxonomy}
+              </span>
+            )}
+          </div>
           <div
             className="flex gap-sm"
             style={{ alignItems: "center", marginTop: "0.25rem", flexWrap: "wrap" }}

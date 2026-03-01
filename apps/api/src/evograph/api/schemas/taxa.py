@@ -47,6 +47,8 @@ class SpeciesSummary(BaseModel):
     is_extinct: bool | None = None
     has_sequence: bool = False
     edge_count: int = 0
+    family_name: str | None = None
+    order_name: str | None = None
 
 
 class SpeciesBrowsePage(BaseModel):

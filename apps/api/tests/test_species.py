@@ -131,4 +131,18 @@ class TestBrowseSpecies:
         data = resp.json()
         assert set(data.keys()) >= {"items", "total", "offset", "limit"}
         item = data["items"][0]
-        assert set(item.keys()) >= {"ott_id", "name", "rank", "has_sequence", "edge_count"}
+        assert set(item.keys()) >= {
+            "ott_id", "name", "rank", "has_sequence", "edge_count",
+            "family_name", "order_name",
+        }
+
+    def test_species_taxonomy_defaults_to_null(self, client, mock_db):
+        mock_db.set(Taxon, [
+            _make_taxon(700118, "Corvus corax", "species"),
+        ])
+
+        resp = client.get("/v1/species")
+        item = resp.json()["items"][0]
+        # Without lineage data, family/order default to null
+        assert item["family_name"] is None
+        assert item["order_name"] is None

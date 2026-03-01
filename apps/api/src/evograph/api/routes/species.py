@@ -141,6 +141,39 @@ def browse_species(
     for ott, cnt in dst_counts:
         edge_counts[ott] = edge_counts.get(ott, 0) + cnt
 
+    # Batch: family and order names from lineage arrays
+    # Collect all ancestor ott_ids from lineages
+    all_ancestor_ids: set[int] = set()
+    for t in rows:
+        if t.lineage:
+            all_ancestor_ids.update(t.lineage)
+
+    # Fetch only family/order ancestors in one query
+    ancestor_map: dict[int, tuple[str, str]] = {}  # ott_id -> (name, rank)
+    if all_ancestor_ids:
+        ancestor_rows = (
+            db.query(Taxon.ott_id, Taxon.name, Taxon.rank)
+            .filter(
+                Taxon.ott_id.in_(all_ancestor_ids),
+                Taxon.rank.in_(["family", "order"]),
+            )
+            .all()
+        )
+        ancestor_map = {ott: (name, rank) for ott, name, rank in ancestor_rows}
+
+    # Build per-species family/order lookup
+    species_family: dict[int, str] = {}
+    species_order: dict[int, str] = {}
+    for t in rows:
+        if t.lineage:
+            for anc_id in t.lineage:
+                info = ancestor_map.get(anc_id)
+                if info:
+                    if info[1] == "family":
+                        species_family[t.ott_id] = info[0]
+                    elif info[1] == "order":
+                        species_order[t.ott_id] = info[0]
+
     return SpeciesBrowsePage(
         items=[
             SpeciesSummary(
@@ -151,6 +184,8 @@ def browse_species(
                 is_extinct=t.is_extinct,
                 has_sequence=t.ott_id in seq_ott_ids,
                 edge_count=edge_counts.get(t.ott_id, 0),
+                family_name=species_family.get(t.ott_id),
+                order_name=species_order.get(t.ott_id),
             )
             for t in rows
         ],

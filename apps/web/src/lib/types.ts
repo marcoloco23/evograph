@@ -41,6 +41,8 @@ export interface SpeciesSummary {
   is_extinct?: boolean | null;
   has_sequence: boolean;
   edge_count: number;
+  family_name: string | null;
+  order_name: string | null;
 }
 
 export interface SpeciesBrowsePage {

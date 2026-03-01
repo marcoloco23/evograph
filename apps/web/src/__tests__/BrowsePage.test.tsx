@@ -11,6 +11,8 @@ const mockSpeciesData = {
       is_extinct: false,
       has_sequence: true,
       edge_count: 12,
+      family_name: "Corvidae",
+      order_name: "Passeriformes",
     },
     {
       ott_id: 893498,
@@ -20,6 +22,8 @@ const mockSpeciesData = {
       is_extinct: false,
       has_sequence: false,
       edge_count: 0,
+      family_name: "Corvidae",
+      order_name: "Passeriformes",
     },
   ],
   total: 2,
@@ -165,6 +169,18 @@ describe("BrowsePage", () => {
     });
     expect(screen.getByText("Next")).toBeInTheDocument();
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
+  });
+
+  it("shows family and order taxonomy context", async () => {
+    mockBrowseSpecies.mockResolvedValue(mockSpeciesData);
+    render(<BrowsePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Corvus corax")).toBeInTheDocument();
+    });
+    // Both species are in Passeriformes > Corvidae
+    const taxonomyLabels = screen.getAllByText("Passeriformes > Corvidae");
+    expect(taxonomyLabels.length).toBe(2);
   });
 
   it("calls API with filter params when clicking filter buttons", async () => {
