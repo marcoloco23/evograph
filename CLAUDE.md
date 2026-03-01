@@ -106,7 +106,7 @@ evograph/
 
 ## Database Schema
 
-Four PostgreSQL tables (migration: `001_initial.py`):
+Four PostgreSQL tables (migrations: `001_initial.py`, `002_performance_indexes.py`):
 
 | Table | PK | Purpose | Key columns |
 |-------|-----|---------|-------------|
@@ -115,7 +115,14 @@ Four PostgreSQL tables (migration: `001_initial.py`):
 | **edges** | `(src_ott_id, dst_ott_id, marker)` | MI similarity graph | distance (0-1), mi_norm (0-1), align_len |
 | **node_media** | `ott_id` (FK) | Species images | image_url, attribution (jsonb) |
 
-**Indexes:** taxa(name), taxa(parent_ott_id), sequences(ott_id), edges(src_ott_id), edges(dst_ott_id)
+**Indexes (migration 001):** taxa(name), taxa(parent_ott_id), sequences(ott_id), edges(src_ott_id), edges(dst_ott_id)
+
+**Performance indexes (migration 002):**
+- `ix_taxa_name_trgm` — GIN trigram index on taxa.name (fast ILIKE `%query%`)
+- `ix_taxa_rank` — B-tree on taxa.rank (rank-based filtering)
+- `ix_edges_src_distance` — composite on edges(src_ott_id, distance) (neighbor queries)
+- `ix_sequences_ott_canonical` — composite on sequences(ott_id, is_canonical) (canonical checks)
+- `ix_sequences_ott_marker` — composite on sequences(ott_id, marker) (pipeline selection)
 
 ## API Endpoints
 
@@ -124,11 +131,11 @@ All under FastAPI with CORS enabled (all origins).
 | Method | Path | Params | Response | Notes |
 |--------|------|--------|----------|-------|
 | GET | `/health` | — | `{"status":"ok"}` | |
-| GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `TaxonSummary[]` | ILIKE on name |
-| GET | `/v1/taxa/{ott_id}` | — | `TaxonDetail` | Children limited to 100 inline |
+| GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `TaxonSummary[]` | pg_trgm + prefix ranking |
+| GET | `/v1/taxa/{ott_id}` | — | `TaxonDetail` | Recursive CTE lineage |
 | GET | `/v1/taxa/{ott_id}/children` | `offset`, `limit` (max 500) | `ChildrenPage` | Paginated |
 | GET | `/v1/taxa/{ott_id}/sequences` | — | `SequenceOut[]` | Includes DNA sequence text |
-| GET | `/v1/graph/subtree/{ott_id}` | `depth` (1-5, default 3) | `GraphResponse` | BFS + MI edges |
+| GET | `/v1/graph/subtree/{ott_id}` | `depth` (1-5, default 3) | `GraphResponse` | Recursive CTE subtree |
 | GET | `/v1/graph/mi-network` | — | `GraphResponse` | Cached 5min in-memory |
 | GET | `/v1/graph/neighbors/{ott_id}` | `k` (1-50, default 15) | `NeighborOut[]` | Sorted by distance |
 
@@ -281,7 +288,6 @@ The following types must stay in sync across three layers:
 - [ ] Expand NCBI ingestion — try genus-level queries, broader search terms
 - [ ] Retry BOLD portal when it comes back online
 - [ ] Frontend smoke tests
-- [ ] Add DB indexes on edges if not present
 
 ### Medium Priority
 - [ ] Run validate.py and document results
@@ -301,6 +307,17 @@ The following types must stay in sync across three layers:
 4. **Graph is derived data** — not the source of truth
 5. **MI is a similarity proxy, not phylogenetic truth** — always label as "similarity"
 
+## Performance Characteristics
+
+- **Connection pooling:** 10 persistent + 20 overflow connections, 5min recycle, pre-ping validation
+- **GZip compression:** All responses > 500 bytes are compressed (critical for graph JSON)
+- **Lineage query:** Single recursive CTE (was N+1 individual parent lookups)
+- **Subtree query:** Single recursive CTE (was Python-side BFS with one query per level)
+- **Canonical check:** Uses `EXISTS` subquery (was fetching full row)
+- **Search:** pg_trgm GIN index for fast ILIKE substring matching; prefix matches ranked first
+- **MI network:** In-memory cache with 5-minute TTL
+- **Neighbor queries:** Composite index (src_ott_id, distance) for indexed ORDER BY + LIMIT
+
 ## Known Gotchas
 
 - `pyproject.toml` requires Python >=3.11 (relaxed from 3.12 for compatibility)
@@ -311,7 +328,7 @@ The following types must stay in sync across three layers:
 - Graph JSON exports exist at `apps/api/src/data/processed/graph/` but are gitignored
 - Sequence `quality` field is JSONB with `{"ambig": N}` format
 - Edges are directed (A→B) but UI treats as undirected
-- Lineage is built by walking parent chain at query time (not precomputed)
 - The `ingest_images.py` uses raw SQL (`text()`) for the join query
 - MI network endpoint is cached in-memory (5min TTL) — stale data possible after pipeline re-run
 - Cytoscape types use `StylesheetStyle` (not `Stylesheet`) in newer @types/cytoscape
+- Migration 002 requires `pg_trgm` extension — enabled automatically in upgrade()

@@ -81,6 +81,11 @@ def sample_taxa():
     }
 
 
+class MockExistsClause:
+    """Wraps a boolean for EXISTS subquery simulation."""
+    pass
+
+
 class MockQuery:
     """Chainable mock for SQLAlchemy query calls."""
 
@@ -105,7 +110,14 @@ class MockQuery:
     def group_by(self, *args, **kwargs):
         return self
 
+    def exists(self):
+        """Return an exists clause marker for use in outer query."""
+        return MockExistsClause()
+
     def scalar(self):
+        # When called on an EXISTS wrapper query, return False
+        if self._results and isinstance(self._results[0], MockExistsClause):
+            return False
         return 0
 
     def all(self):
@@ -113,6 +125,22 @@ class MockQuery:
 
     def first(self):
         return self._results[0] if self._results else None
+
+
+class MockExecuteResult:
+    """Mock result for db.execute() calls (used by recursive CTEs)."""
+
+    def __init__(self, rows=None):
+        self._rows = rows or []
+
+    def fetchall(self):
+        return self._rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return [row[0] if isinstance(row, tuple) else row for row in self._rows]
 
 
 class MockDB:
@@ -127,10 +155,17 @@ class MockDB:
         return self
 
     def query(self, *models):
+        # For EXISTS wrapper: db.query(exists_clause)
+        if len(models) == 1 and isinstance(models[0], MockExistsClause):
+            return MockQuery([models[0]])
         # For multi-model queries like (Edge, Taxon), use a tuple key
         key = models[0] if len(models) == 1 else models
         results = self._registry.get(key, [])
         return MockQuery(results)
+
+    def execute(self, *args, **kwargs):
+        """Handle raw SQL execute calls (recursive CTEs). Returns empty results."""
+        return MockExecuteResult([])
 
 
 @pytest.fixture()

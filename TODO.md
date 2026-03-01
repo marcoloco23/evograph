@@ -15,8 +15,14 @@
 
 ### Performance
 - [x] Cache MI network endpoint — in-memory cache with 5-minute TTL
-- [ ] Add DB indexes on `edges(src_ott_id, dst_ott_id)` if not already present
+- [x] Performance indexes (migration 002) — pg_trgm, composite indexes for neighbors/canonical/search
 - [x] Paginate children for large taxa — inline limit of 100, dedicated `/taxa/{id}/children` endpoint with offset/limit
+- [x] Connection pooling — 10 persistent + 20 overflow, pre-ping, 5min recycle
+- [x] Recursive CTE for lineage — single query replaces N+1 parent chain walk
+- [x] Recursive CTE for subtree — single query replaces Python BFS with per-level queries
+- [x] GZip compression — middleware compresses responses > 500 bytes
+- [x] Search optimization — pg_trgm GIN index + prefix ranking + LIKE pattern escaping
+- [x] EXISTS for canonical check — replaces fetching full row
 
 ## Medium Priority
 

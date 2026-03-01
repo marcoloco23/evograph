@@ -1,7 +1,7 @@
 """Taxon detail endpoint with paginated children."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from evograph.api.schemas.taxa import ChildrenPage, TaxonDetail, TaxonSummary
@@ -11,6 +11,33 @@ from evograph.db.session import get_db
 router = APIRouter(tags=["taxa"])
 
 _INLINE_CHILDREN_LIMIT = 100
+
+
+def _fetch_lineage(db: Session, ott_id: int) -> list[TaxonSummary]:
+    """Fetch full lineage (root → ... → parent) using a recursive CTE.
+
+    Single SQL query replaces N+1 individual parent lookups.
+    """
+    result = db.execute(
+        text("""
+            WITH RECURSIVE ancestors AS (
+                SELECT ott_id, name, rank, parent_ott_id, 0 AS depth
+                FROM taxa
+                WHERE ott_id = (SELECT parent_ott_id FROM taxa WHERE ott_id = :ott_id)
+                UNION ALL
+                SELECT t.ott_id, t.name, t.rank, t.parent_ott_id, a.depth + 1
+                FROM taxa t
+                JOIN ancestors a ON t.ott_id = a.parent_ott_id
+                WHERE a.depth < 20
+            )
+            SELECT ott_id, name, rank FROM ancestors ORDER BY depth DESC
+        """),
+        {"ott_id": ott_id},
+    ).fetchall()
+    return [
+        TaxonSummary(ott_id=row[0], name=row[1], rank=row[2])
+        for row in result
+    ]
 
 
 @router.get("/taxa/{ott_id}", response_model=TaxonDetail)
@@ -65,31 +92,17 @@ def get_taxon(
         )
         child_images = {ott: url for ott, url in media_rows}
 
-    has_canonical = (
+    # EXISTS check is faster than fetching a full row
+    has_canonical = db.query(
         db.query(Sequence)
         .filter(Sequence.ott_id == ott_id, Sequence.is_canonical.is_(True))
-        .first()
-        is not None
-    )
+        .exists()
+    ).scalar()
 
     media = db.query(NodeMedia).filter(NodeMedia.ott_id == ott_id).first()
 
-    # Build lineage by walking up the parent chain
-    lineage: list[TaxonSummary] = []
-    current = taxon
-    seen = {ott_id}
-    while current.parent_ott_id and current.parent_ott_id not in seen:
-        seen.add(current.parent_ott_id)
-        parent = db.query(Taxon).filter(Taxon.ott_id == current.parent_ott_id).first()
-        if parent is None:
-            break
-        lineage.append(TaxonSummary(
-            ott_id=parent.ott_id,
-            name=parent.name,
-            rank=parent.rank,
-        ))
-        current = parent
-    lineage.reverse()  # root → ... → parent
+    # Build lineage with single recursive CTE query (replaces N+1 parent walk)
+    lineage = _fetch_lineage(db, ott_id)
 
     parent_name = None
     if lineage:
