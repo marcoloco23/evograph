@@ -1,9 +1,10 @@
 """Graph endpoints: subtree and MI-neighbor queries."""
 
+import time
 from collections import deque
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from evograph.api.schemas.graph import GraphEdge, GraphResponse, NeighborOut, Node
@@ -11,6 +12,11 @@ from evograph.db.models import Edge, NodeMedia, Taxon
 from evograph.db.session import get_db
 
 router = APIRouter(tags=["graph"])
+
+# ── In-memory cache for MI network (expensive query) ──────
+_mi_network_cache: GraphResponse | None = None
+_mi_network_cache_time: float = 0.0
+_MI_NETWORK_TTL: float = 300.0  # 5 minutes
 
 
 @router.get("/graph/subtree/{ott_id}", response_model=GraphResponse)
@@ -109,7 +115,14 @@ def get_mi_network(
     Returns all taxa that have at least one MI edge, plus all MI edges
     between them (deduplicated to undirected). Includes taxonomy edges
     connecting species to their parent genus.
+
+    Results are cached in-memory for 5 minutes.
     """
+    global _mi_network_cache, _mi_network_cache_time
+    now = time.monotonic()
+    if _mi_network_cache is not None and (now - _mi_network_cache_time) < _MI_NETWORK_TTL:
+        return _mi_network_cache
+
     # Get all MI edges
     all_edges = db.query(Edge).all()
     if not all_edges:
@@ -172,7 +185,10 @@ def get_mi_network(
         for t in taxa_map.values()
     ]
 
-    return GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
+    result = GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
+    _mi_network_cache = result
+    _mi_network_cache_time = time.monotonic()
+    return result
 
 
 @router.get("/graph/neighbors/{ott_id}", response_model=list[NeighborOut])

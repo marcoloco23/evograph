@@ -1,7 +1,7 @@
 """Tests for the /v1/graph/* endpoints."""
 
 from evograph.db.models import Edge, NodeMedia, Taxon
-from tests.conftest import _make_edge, _make_media, _make_taxon
+from tests.conftest import _make_edge, _make_taxon
 
 
 class TestSubtreeGraph:

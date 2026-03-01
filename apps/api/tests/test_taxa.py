@@ -1,7 +1,7 @@
 """Tests for the /v1/taxa/{ott_id} endpoint."""
 
 from evograph.db.models import NodeMedia, Sequence, Taxon
-from tests.conftest import _make_media, _make_sequence, _make_taxon
+from tests.conftest import _make_taxon
 
 
 class TestGetTaxon:

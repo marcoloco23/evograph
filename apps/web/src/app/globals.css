@@ -407,6 +407,11 @@ input:focus {
     width: 40px;
     font-size: 0.6rem;
   }
+
+  .graph-search-input {
+    width: 150px;
+    font-size: 0.75rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -655,5 +660,68 @@ input:focus {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Graph search ─────────────────────────────────── */
+
+.graph-search-box {
+  position: relative;
+}
+
+.graph-search-input {
+  width: 200px;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--fg);
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+.graph-search-input::placeholder {
+  color: #666;
+}
+
+.graph-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.graph-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.4rem 0.65rem;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.graph-search-item:hover {
+  background: rgba(79, 195, 247, 0.1);
+}
+
+.graph-search-rank {
+  font-size: 0.7rem;
+  color: #666;
+  text-transform: capitalize;
+  margin-left: 0.5rem;
   flex-shrink: 0;
 }

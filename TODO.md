@@ -10,11 +10,11 @@
 ### Testing
 - [x] API route tests — pytest + httpx TestClient for all endpoints (42 tests)
 - [x] MI distance unit tests — entropy, MI computation, NMI clamping, distance conversion
-- [ ] Pipeline unit tests — test canonical selection logic
+- [x] Pipeline unit tests — canonical selection scoring logic (11 tests)
 - [ ] Frontend smoke tests — basic render tests for key pages
 
 ### Performance
-- [ ] Cache MI network endpoint — the full graph loads all edges every request. Add Redis or in-memory caching with TTL
+- [x] Cache MI network endpoint — in-memory cache with 5-minute TTL
 - [ ] Add DB indexes on `edges(src_ott_id, dst_ott_id)` if not already present
 - [x] Paginate children for large taxa — inline limit of 100, dedicated `/taxa/{id}/children` endpoint with offset/limit
 
@@ -25,7 +25,7 @@
 - [x] Sequence viewer page — color-coded DNA bases, composition bar, expandable cards
 - [x] Mobile responsive layout — breakpoints at 768px and 480px
 - [x] Loading skeletons — shimmer animation for taxon detail and graph pages
-- [ ] Graph page: add node search/filter within the MI network
+- [x] Graph page: node search/filter within the MI network — autocomplete dropdown with camera animation
 
 ### Data Quality
 - [ ] Run `validate.py` and document results — what % of neighbors share genus/family?
@@ -33,8 +33,9 @@
 - [ ] Deduplicate sequences — check for identical accessions from multiple sources
 
 ### DevOps
-- [ ] Add Dockerfile health checks
+- [x] Add Dockerfile health checks — API (Python urllib), Web (Node fetch), DB (pg_isready), Redis (redis-cli ping)
 - [x] CI pipeline (GitHub Actions) — lint, typecheck, test, build
+- [x] Fix lint warnings — removed unused imports, fixed f-string, removed unused variable
 - [ ] Production deployment config (fly.io, Railway, or VPS)
 
 ## Phase 2 (from ROADMAP.md)

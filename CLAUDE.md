@@ -33,7 +33,7 @@ evograph/
 ├── apps/
 │   ├── api/                          # Python FastAPI backend
 │   │   ├── pyproject.toml            # Dependencies, pytest config, ruff config
-│   │   ├── Dockerfile
+│   │   ├── Dockerfile                # Health check included
 │   │   ├── alembic.ini
 │   │   ├── src/evograph/
 │   │   │   ├── main.py               # FastAPI app, CORS, routers
@@ -62,25 +62,26 @@ evograph/
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 42 pytest tests
+│   │   └── tests/                    # 53 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
 │   │       ├── test_taxa.py
 │   │       ├── test_graph.py
 │   │       ├── test_sequences.py
-│   │       └── test_mi_distance.py
+│   │       ├── test_mi_distance.py
+│   │       └── test_pipeline.py      # Canonical selection scoring tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
-│       ├── Dockerfile
+│       ├── Dockerfile                # Health check included
 │       ├── tsconfig.json             # Strict mode, @/* path alias
 │       ├── next.config.js            # output: "standalone"
 │       └── src/
 │           ├── app/
-│           │   ├── globals.css       # Dark theme, skeleton, responsive
+│           │   ├── globals.css       # Dark theme, skeleton, responsive, graph search
 │           │   ├── layout.tsx        # Root layout, sticky nav
 │           │   ├── page.tsx          # Home: search + quick links
-│           │   ├── graph/page.tsx    # MI network explorer (Sigma.js)
+│           │   ├── graph/page.tsx    # MI network explorer (Sigma.js) + node search
 │           │   └── taxa/[ottId]/
 │           │       ├── page.tsx      # Taxon detail (hero, children, neighbors)
 │           │       └── sequences/page.tsx  # COI sequence viewer
@@ -94,7 +95,7 @@ evograph/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
-├── docker-compose.yml                # postgres:16, redis:7, api, web
+├── docker-compose.yml                # postgres:16, redis:7, api, web (with health checks)
 ├── Makefile                          # Pipeline orchestration commands
 ├── .github/workflows/ci.yml         # Lint, test, typecheck, build
 ├── .env.example
@@ -128,7 +129,7 @@ All under FastAPI with CORS enabled (all origins).
 | GET | `/v1/taxa/{ott_id}/children` | `offset`, `limit` (max 500) | `ChildrenPage` | Paginated |
 | GET | `/v1/taxa/{ott_id}/sequences` | — | `SequenceOut[]` | Includes DNA sequence text |
 | GET | `/v1/graph/subtree/{ott_id}` | `depth` (1-5, default 3) | `GraphResponse` | BFS + MI edges |
-| GET | `/v1/graph/mi-network` | — | `GraphResponse` | All MI-connected species |
+| GET | `/v1/graph/mi-network` | — | `GraphResponse` | Cached 5min in-memory |
 | GET | `/v1/graph/neighbors/{ott_id}` | `k` (1-50, default 15) | `NeighborOut[]` | Sorted by distance |
 
 **Key response types:**
@@ -187,7 +188,7 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (42 tests)
+# API tests (53 tests)
 cd apps/api && python -m pytest tests/ -v
 
 # Lint
@@ -212,7 +213,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 ## Testing Strategy
 
-**Current: 42 tests passing** (all in `apps/api/tests/`)
+**Current: 53 tests passing** (all in `apps/api/tests/`)
 
 Tests use `MockDB` with FastAPI dependency override — no real database needed:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar), `MockDB` (registry by model type)
@@ -221,9 +222,10 @@ Tests use `MockDB` with FastAPI dependency override — no real database needed:
 **What's tested:**
 - All 8 API endpoints (status codes, response schemas, validation errors, 404s)
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
+- Pipeline canonical selection scoring (11 tests for `_score` function)
 
 **What's NOT tested:**
-- Pipeline scripts (ingest, canonical selection, neighbor building)
+- Full pipeline integration (ingest, neighbor building)
 - Frontend components (no Jest/RTL)
 - External API integration (OpenTree, NCBI, Wikipedia)
 - Database migrations
@@ -233,6 +235,7 @@ Tests use `MockDB` with FastAPI dependency override — no real database needed:
 - **Dark theme:** CSS variables in globals.css (--bg, --fg, --accent, --border, --bg-card)
 - **Rank colors:** class=#e57373, order=#ffb74d, family=#fff176, genus=#81c784, species=#4fc3f7
 - **Two graph renderers:** GraphView.tsx (Cytoscape, for small subtree graphs) and GraphViewSigma.tsx (Sigma.js WebGL, for full MI network)
+- **Graph search:** NodeSearchBox component in graph/page.tsx — autocomplete dropdown that highlights + zooms to selected node
 - **Loading states:** Skeleton.tsx with shimmer animation (not plain text)
 - **Responsive breakpoints:** 768px (tablet), 480px (mobile)
 - **Species names:** Always italicized (`<span className="italic">`)
@@ -277,14 +280,11 @@ The following types must stay in sync across three layers:
 ### High Priority
 - [ ] Expand NCBI ingestion — try genus-level queries, broader search terms
 - [ ] Retry BOLD portal when it comes back online
-- [ ] Pipeline unit tests — test canonical selection logic
 - [ ] Frontend smoke tests
-- [ ] Cache MI network endpoint (Redis or in-memory TTL)
+- [ ] Add DB indexes on edges if not present
 
 ### Medium Priority
-- [ ] Graph page: add node search/filter
 - [ ] Run validate.py and document results
-- [ ] Dockerfile health checks
 - [ ] Production deployment config
 
 ### Phase 2
@@ -313,3 +313,5 @@ The following types must stay in sync across three layers:
 - Edges are directed (A→B) but UI treats as undirected
 - Lineage is built by walking parent chain at query time (not precomputed)
 - The `ingest_images.py` uses raw SQL (`text()`) for the join query
+- MI network endpoint is cached in-memory (5min TTL) — stale data possible after pipeline re-run
+- Cytoscape types use `StylesheetStyle` (not `Stylesheet`) in newer @types/cytoscape
