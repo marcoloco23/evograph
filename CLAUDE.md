@@ -43,7 +43,7 @@ evograph/
 │   │   │   │   ├── session.py        # engine, SessionLocal, get_db
 │   │   │   │   └── migrations/versions/001_initial.py
 │   │   │   ├── api/
-│   │   │   │   ├── routes/           # search, taxa, graph, sequences
+│   │   │   │   ├── routes/           # search, taxa, graph, sequences, stats
 │   │   │   │   └── schemas/          # Pydantic response models
 │   │   │   ├── services/
 │   │   │   │   ├── ott_client.py     # OpenTree API (tnrs, subtree, taxon_info)
@@ -60,11 +60,11 @@ evograph/
 │   │   │   │   ├── ingest_images.py  # Wikipedia thumbnails → node_media
 │   │   │   │   ├── backfill_ncbi_tax_id.py # NCBI Taxonomy API → ncbi_tax_id column
 │   │   │   │   ├── dedup_sequences.py # Remove duplicate accessions
-│   │   │   │   └── validate.py       # Quality stats & outlier detection
+│   │   │   │   └── validate.py       # Quality stats & outlier detection (JSON export)
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 77 pytest tests
+│   │   └── tests/                    # 91 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -75,7 +75,9 @@ evograph/
 │   │       ├── test_pipeline.py      # Canonical selection scoring tests
 │   │       ├── test_backfill_ncbi.py # NCBI tax ID lookup tests
 │   │       ├── test_ingest_ncbi.py   # NCBI ingestion search strategy tests
-│   │       └── test_dedup_sequences.py # Sequence deduplication tests
+│   │       ├── test_dedup_sequences.py # Sequence deduplication tests
+│   │       ├── test_stats.py         # Stats endpoint tests
+│   │       └── test_validate.py      # Validation pipeline tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
 │       ├── Dockerfile                # Health check included
@@ -97,18 +99,20 @@ evograph/
 │           │   ├── TaxonCard.tsx      # Thumbnail + rank badge
 │           │   ├── GraphView.tsx      # Cytoscape.js (small graphs)
 │           │   ├── GraphViewSigma.tsx # Sigma.js (large networks)
-│           │   └── Skeleton.tsx       # Shimmer loading states
+│           │   ├── Skeleton.tsx       # Shimmer loading states
+│           │   └── ErrorBoundary.tsx  # React error boundary with retry
 │           └── lib/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
-│           └── __tests__/            # 58 Jest + RTL tests
+│           └── __tests__/            # 63 Jest + RTL tests
 │               ├── HomePage.test.tsx
 │               ├── TaxonDetailPage.test.tsx
 │               ├── SequencesPage.test.tsx
 │               ├── SearchBox.test.tsx
 │               ├── TaxonCard.test.tsx
 │               ├── Skeleton.test.tsx
+│               ├── ErrorBoundary.test.tsx
 │               ├── api.test.ts
 │               └── external-links.test.ts
 ├── docker-compose.yml                # postgres:16, redis:7, api, web (with health checks)
@@ -154,6 +158,7 @@ All under FastAPI with CORS enabled (all origins).
 | GET | `/v1/graph/subtree/{ott_id}` | `depth` (1-5, default 3) | `GraphResponse` | Recursive CTE subtree |
 | GET | `/v1/graph/mi-network` | — | `GraphResponse` | Cached 5min in-memory |
 | GET | `/v1/graph/neighbors/{ott_id}` | `k` (1-50, default 15) | `NeighborOut[]` | Sorted by distance |
+| GET | `/v1/stats` | — | `StatsResponse` | Taxa/sequence/edge counts |
 
 **Key response types:**
 - `TaxonDetail`: includes children[], total_children, lineage[], has_canonical_sequence, wikipedia_url
@@ -174,7 +179,7 @@ Run via Makefile or directly as `python -m evograph.pipeline.<name>`:
 6. build_graph_export — Export nodes.json + edges.json
 7. ingest_images   — Wikipedia thumbnails → node_media table
 8. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
-9. validate        — Print quality report (genus/family sharing %, distance stats)
+9. validate        — Print quality report (genus/family sharing %, distance stats, --output for JSON)
 ```
 
 **Full pipeline:** `make pipeline` runs steps 1-7 in sequence.
@@ -213,10 +218,10 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (77 tests)
+# API tests (91 tests)
 cd apps/api && python -m pytest tests/ -v
 
-# Frontend tests (58 tests)
+# Frontend tests (63 tests)
 cd apps/web && npm test
 
 # Lint
@@ -241,16 +246,18 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 ## Testing Strategy
 
-**Current: 135 tests passing** (77 API + 58 frontend)
+**Current: 154 tests passing** (91 API + 63 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
-- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists), `MockDB` (registry by model type + execute for CTEs)
-- All 8 API endpoints (status codes, response schemas, validation errors, 404s)
+- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
+- All 9 API endpoints (status codes, response schemas, validation errors, 404s)
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
 - Pipeline canonical selection scoring (11 tests for `_score` function)
 - NCBI taxonomy ID lookup (6 tests for `_lookup_tax_id` function)
 - NCBI ingestion search strategy (15 tests: query building, esearch, efetch, genus fallback)
 - Sequence deduplication (3 tests for `find_duplicates` function)
+- Validation pipeline (12 tests: walk_to_rank, report structure, outlier detection)
+- Stats endpoint (2 tests: structure, empty database)
 
 **Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
 - `HomePage.test.tsx` — heading, search box, quick links, rank badges
@@ -259,6 +266,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 - `SearchBox.test.tsx` — debounce, API calls, dropdown, navigation on selection
 - `TaxonCard.test.tsx` — rendering, links, child count, image, italicization
 - `Skeleton.test.tsx` — SkeletonLine/Circle/Card, TaxonDetailSkeleton, GraphPageSkeleton
+- `ErrorBoundary.test.tsx` — renders children, fallback on error, custom fallback, retry recovery
 - `api.test.ts` — all API client functions (URL construction, error handling)
 - `external-links.test.ts` — Wikipedia, iNaturalist, eBird URL formatting
 
@@ -290,6 +298,7 @@ The following types must stay in sync across three layers:
 | `SequenceOut` | `SequenceOut` | `Sequence` |
 | `Node` / `GraphEdge` / `GraphResponse` | `GraphNode` / `GraphEdge` / `GraphResponse` | `Taxon` + `Edge` |
 | `NeighborOut` | `NeighborOut` | `Edge` + `Taxon` join |
+| (inline dict) | `StatsResponse` | Aggregation queries |
 
 **When adding a field:** Update all three: schema → route mapping → TypeScript type → API client → UI usage.
 
@@ -319,12 +328,13 @@ The following types must stay in sync across three layers:
 - [ ] Retry BOLD portal when it comes back online
 
 ### Medium Priority
-- [ ] Run validate.py and document results
+- [ ] Run validate.py and document results (now with `--output` JSON export)
 - [ ] Production deployment config
 
 ### Phase 2
 - [ ] k-mer candidate filtering (FAISS/Annoy) for cross-family neighbors
 - [ ] Job queue (Celery/RQ) for background pipeline jobs
+- [ ] Precompute subtree graph exports for common entry points
 - [ ] Multi-marker support (16S, 18S)
 
 ## Architectural Principles

@@ -35,7 +35,7 @@
 
 ### Data Quality
 - [ ] Run `validate.py` and document results — what % of neighbors share genus/family?
-- [ ] Flag taxonomic outliers — species whose MI neighbors are in different families
+- [x] Flag taxonomic outliers — `validate.py` now returns structured `ValidationReport` with `OutlierRecord` objects (cross-family close, within-genus distant), JSON export via `--output`
 - [x] Deduplicate sequences — `dedup_sequences.py` removes duplicate accessions, keeping longest per (ott_id, accession, marker)
 
 ### DevOps

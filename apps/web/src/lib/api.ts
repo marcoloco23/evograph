@@ -1,4 +1,4 @@
-import type { TaxonSummary, TaxonDetail, ChildrenPage, GraphResponse, NeighborOut, SequenceOut } from "./types";
+import type { TaxonSummary, TaxonDetail, ChildrenPage, GraphResponse, NeighborOut, SequenceOut, StatsResponse } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -38,4 +38,8 @@ export function getChildren(ottId: number, offset = 0, limit = 100) {
 
 export function getSequences(ottId: number) {
   return getJSON<SequenceOut[]>(`/v1/taxa/${ottId}/sequences`);
+}
+
+export function getStats() {
+  return getJSON<StatsResponse>(`/v1/stats`);
 }

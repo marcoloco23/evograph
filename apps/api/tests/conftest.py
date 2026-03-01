@@ -110,6 +110,9 @@ class MockQuery:
     def group_by(self, *args, **kwargs):
         return self
 
+    def select_from(self, *args, **kwargs):
+        return self
+
     def exists(self):
         """Return an exists clause marker for use in outer query."""
         return MockExistsClause()
@@ -125,6 +128,9 @@ class MockQuery:
 
     def first(self):
         return self._results[0] if self._results else None
+
+    def one(self):
+        return self._results[0] if self._results else (None,)
 
 
 class MockExecuteResult:

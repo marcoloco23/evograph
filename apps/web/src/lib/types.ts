@@ -63,3 +63,25 @@ export interface NeighborOut {
   distance: number;
   mi_norm: number;
 }
+
+export interface StatsResponse {
+  taxa: {
+    total: number;
+    by_rank: Record<string, number>;
+  };
+  sequences: {
+    total: number;
+    by_source: Record<string, number>;
+    species_with_sequences: number;
+    species_total: number;
+    coverage_pct: number;
+  };
+  edges: {
+    total: number;
+    distance: {
+      min: number;
+      max: number;
+      avg: number;
+    } | null;
+  };
+}
