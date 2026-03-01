@@ -33,17 +33,18 @@ evograph/
 ├── apps/
 │   ├── api/                          # Python FastAPI backend
 │   │   ├── pyproject.toml            # Dependencies, pytest config, ruff config
-│   │   ├── Dockerfile                # Health check included
+│   │   ├── Dockerfile                # Multi-stage: dev (--reload) + prod (4 workers, non-root)
 │   │   ├── alembic.ini
 │   │   ├── src/evograph/
-│   │   │   ├── main.py               # FastAPI app, CORS, routers
-│   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT
+│   │   │   ├── main.py               # FastAPI app, lifespan, CORS, rate limiting, logging, health
+│   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT, CORS_ORIGINS, LOG_LEVEL, LOG_FORMAT
+│   │   │   ├── logging_config.py    # Structured logging (text/JSON format, configurable level)
 │   │   │   ├── db/
 │   │   │   │   ├── models.py         # Taxon, Sequence, Edge, NodeMedia
 │   │   │   │   ├── session.py        # engine, SessionLocal, get_db
 │   │   │   │   └── migrations/versions/001_initial.py
 │   │   │   ├── api/
-│   │   │   │   ├── routes/           # search, taxa, graph, sequences
+│   │   │   │   ├── routes/           # search, taxa, graph, sequences, stats
 │   │   │   │   └── schemas/          # Pydantic response models
 │   │   │   ├── services/
 │   │   │   │   ├── ott_client.py     # OpenTree API (tnrs, subtree, taxon_info)
@@ -58,11 +59,17 @@ evograph/
 │   │   │   │   ├── build_neighbors.py  # Pairwise MI → kNN edges
 │   │   │   │   ├── build_graph_export.py # JSON files for caching
 │   │   │   │   ├── ingest_images.py  # Wikipedia thumbnails → node_media
-│   │   │   │   └── validate.py       # Quality stats & outlier detection
+│   │   │   │   ├── backfill_ncbi_tax_id.py # NCBI Taxonomy API → ncbi_tax_id column
+│   │   │   │   ├── dedup_sequences.py # Remove duplicate accessions
+│   │   │   │   └── validate.py       # Quality stats & outlier detection (JSON export)
+│   │   │   ├── middleware/
+│   │   │   │   ├── rate_limit.py    # Sliding-window per-IP rate limiter
+│   │   │   │   ├── request_logging.py # Structured access logging + X-Request-ID
+│   │   │   │   └── security_headers.py # X-Content-Type-Options, X-Frame-Options, etc.
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 53 pytest tests
+│   │   └── tests/                    # 110 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -70,18 +77,32 @@ evograph/
 │   │       ├── test_graph.py
 │   │       ├── test_sequences.py
 │   │       ├── test_mi_distance.py
-│   │       └── test_pipeline.py      # Canonical selection scoring tests
+│   │       ├── test_pipeline.py      # Canonical selection scoring tests
+│   │       ├── test_backfill_ncbi.py # NCBI tax ID lookup tests
+│   │       ├── test_ingest_ncbi.py   # NCBI ingestion search strategy tests
+│   │       ├── test_dedup_sequences.py # Sequence deduplication tests
+│   │       ├── test_stats.py         # Stats endpoint tests
+│   │       ├── test_validate.py      # Validation pipeline tests
+│   │       ├── test_rate_limit.py    # Rate limiting middleware tests
+│   │       ├── test_request_logging.py # Request logging middleware tests
+│   │       ├── test_logging_config.py # Logging configuration tests
+│   │       └── test_security_headers.py # Security headers middleware tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
-│       ├── Dockerfile                # Health check included
+│       ├── Dockerfile                # Multi-stage: dev (npm run dev) + prod (standalone build, non-root)
 │       ├── tsconfig.json             # Strict mode, @/* path alias
 │       ├── next.config.js            # output: "standalone"
+│       ├── jest.config.js            # Jest + next/jest setup
+│       ├── jest.setup.ts             # @testing-library/jest-dom
 │       └── src/
 │           ├── app/
 │           │   ├── globals.css       # Dark theme, skeleton, responsive, graph search
 │           │   ├── layout.tsx        # Root layout, sticky nav
 │           │   ├── page.tsx          # Home: search + quick links
 │           │   ├── graph/page.tsx    # MI network explorer (Sigma.js) + node search
+│           │   ├── stats/page.tsx   # Database stats dashboard
+│           │   ├── not-found.tsx    # 404 page
+│           │   ├── error.tsx        # Error boundary page
 │           │   └── taxa/[ottId]/
 │           │       ├── page.tsx      # Taxon detail (hero, children, neighbors)
 │           │       └── sequences/page.tsx  # COI sequence viewer
@@ -90,13 +111,27 @@ evograph/
 │           │   ├── TaxonCard.tsx      # Thumbnail + rank badge
 │           │   ├── GraphView.tsx      # Cytoscape.js (small graphs)
 │           │   ├── GraphViewSigma.tsx # Sigma.js (large networks)
-│           │   └── Skeleton.tsx       # Shimmer loading states
+│           │   ├── Skeleton.tsx       # Shimmer loading states
+│           │   └── ErrorBoundary.tsx  # React error boundary with retry
 │           └── lib/
 │               ├── api.ts            # API client functions
 │               ├── types.ts          # TypeScript interfaces
 │               └── external-links.ts # Wikipedia, iNaturalist, eBird URLs
-├── docker-compose.yml                # postgres:16, redis:7, api, web (with health checks)
-├── Makefile                          # Pipeline orchestration commands
+│           └── __tests__/            # 82 Jest + RTL tests
+│               ├── HomePage.test.tsx
+│               ├── TaxonDetailPage.test.tsx
+│               ├── SequencesPage.test.tsx
+│               ├── GraphPage.test.tsx
+│               ├── SearchBox.test.tsx
+│               ├── TaxonCard.test.tsx
+│               ├── Skeleton.test.tsx
+│               ├── ErrorBoundary.test.tsx
+│               ├── StatsPage.test.tsx
+│               ├── api.test.ts
+│               └── external-links.test.ts
+├── docker-compose.yml                # Dev: postgres:16, redis:7, api (--reload), web (npm run dev)
+├── docker-compose.prod.yml          # Prod override: multi-worker, non-root, no source mounts
+├── Makefile                          # Pipeline + deployment commands (up, up-prod)
 ├── .github/workflows/ci.yml         # Lint, test, typecheck, build
 ├── .env.example
 ├── TODO.md                           # Tracked tasks with completion status
@@ -130,17 +165,21 @@ All under FastAPI with CORS enabled (all origins).
 
 | Method | Path | Params | Response | Notes |
 |--------|------|--------|----------|-------|
-| GET | `/health` | — | `{"status":"ok"}` | |
-| GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `TaxonSummary[]` | pg_trgm + prefix ranking |
+| GET | `/health` | — | `{"status":"ok","scope":"Aves"}` | Liveness check |
+| GET | `/health/ready` | — | `{"status":"ok","database":{...}}` | Readiness + pool stats |
+| GET | `/v1/search` | `q` (required, min 1), `limit` (max 100) | `SearchPage` | pg_trgm + prefix ranking, total count |
 | GET | `/v1/taxa/{ott_id}` | — | `TaxonDetail` | Recursive CTE lineage |
 | GET | `/v1/taxa/{ott_id}/children` | `offset`, `limit` (max 500) | `ChildrenPage` | Paginated |
-| GET | `/v1/taxa/{ott_id}/sequences` | — | `SequenceOut[]` | Includes DNA sequence text |
+| GET | `/v1/taxa/{ott_id}/sequences` | `offset`, `limit` (max 200) | `SequencePage` | Paginated |
 | GET | `/v1/graph/subtree/{ott_id}` | `depth` (1-5, default 3) | `GraphResponse` | Recursive CTE subtree |
 | GET | `/v1/graph/mi-network` | — | `GraphResponse` | Cached 5min in-memory |
 | GET | `/v1/graph/neighbors/{ott_id}` | `k` (1-50, default 15) | `NeighborOut[]` | Sorted by distance |
+| GET | `/v1/stats` | — | `StatsResponse` | Taxa/sequence/edge counts |
 
 **Key response types:**
 - `TaxonDetail`: includes children[], total_children, lineage[], has_canonical_sequence, wikipedia_url
+- `SearchPage`: items[] + total + limit (paginated search results)
+- `SequencePage`: items[] + total + offset + limit (paginated sequences)
 - `GraphResponse`: nodes[] + edges[] (kind: "taxonomy" | "mi")
 - `SequenceOut`: includes full DNA sequence text, source, accession, is_canonical
 
@@ -149,14 +188,16 @@ All under FastAPI with CORS enabled (all origins).
 Run via Makefile or directly as `python -m evograph.pipeline.<name>`:
 
 ```
-1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (~27,853 for Aves)
-2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences table
+1. ingest_ott      — Parse OpenTree Newick subtree → taxa table (--scope configurable)
+2. ingest_ncbi     — Fetch COI from NCBI GenBank → sequences (genus fallback, --skip-existing)
    ingest_bold     — Fetch COI from BOLD portal → sequences table (portal down)
-3. select_canonical — Score sequences (length - 10*ambig), mark best per species
-4. build_neighbors  — Pairwise alignment + MI distance → kNN edges (k=15)
-5. build_graph_export — Export nodes.json + edges.json
-6. ingest_images   — Wikipedia thumbnails → node_media table
-7. validate        — Print quality report (genus/family sharing %, distance stats)
+3. dedup_sequences — Remove duplicate accessions, keep longest (--dry-run supported)
+4. select_canonical — Score sequences (length - 10*ambig), mark best per species
+5. build_neighbors  — Pairwise alignment + MI distance → kNN edges (k=15)
+6. build_graph_export — Export nodes.json + edges.json
+7. ingest_images   — Wikipedia thumbnails → node_media table
+8. backfill_ncbi_tax_id — Query NCBI Taxonomy API → ncbi_tax_id column
+9. validate        — Print quality report (genus/family sharing %, distance stats, --output for JSON)
 ```
 
 **Full pipeline:** `make pipeline` runs steps 1-7 in sequence.
@@ -195,8 +236,11 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (53 tests)
+# API tests (110 tests)
 cd apps/api && python -m pytest tests/ -v
+
+# Frontend tests (82 tests)
+cd apps/web && npm test
 
 # Lint
 cd apps/api && ruff check src/ tests/
@@ -216,26 +260,46 @@ DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/evograph
 REDIS_URL=redis://redis:6379/0
 SCOPE_OTT_ROOT=Aves
 NEXT_PUBLIC_API_BASE=http://localhost:8000
+CORS_ORIGINS=["*"]                    # JSON array of allowed origins
+LOG_LEVEL=info                        # debug, info, warning, error, critical
+LOG_FORMAT=text                       # text (dev) or json (production)
 ```
 
 ## Testing Strategy
 
-**Current: 53 tests passing** (all in `apps/api/tests/`)
+**Current: 192 tests passing** (110 API + 82 frontend)
 
-Tests use `MockDB` with FastAPI dependency override — no real database needed:
-- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar), `MockDB` (registry by model type)
-- Override `get_db` dependency with mock session
-
-**What's tested:**
-- All 8 API endpoints (status codes, response schemas, validation errors, 404s)
+**API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
+- `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
+- All 10 API endpoints (status codes, response schemas, validation errors, 404s)
 - MI distance computation (entropy, NMI, clamping, gap exclusion)
 - Pipeline canonical selection scoring (11 tests for `_score` function)
+- NCBI taxonomy ID lookup (6 tests for `_lookup_tax_id` function)
+- NCBI ingestion search strategy (15 tests: query building, esearch, efetch, genus fallback)
+- Sequence deduplication (3 tests for `find_duplicates` function)
+- Validation pipeline (12 tests: walk_to_rank, report structure, outlier detection)
+- Stats endpoint (2 tests: structure, empty database)
+- Rate limiting middleware (5 tests: headers, decrement, 429, exclusions)
+- Logging configuration (5 tests: JSON formatter, text/JSON/debug configuration)
+- Security headers middleware (2 tests: header values, main app integration)
+
+**Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
+- `HomePage.test.tsx` — heading, search box, quick links, rank badges
+- `TaxonDetailPage.test.tsx` — skeleton, hero, breadcrumb, children, external links, error state
+- `SequencesPage.test.tsx` — skeleton, accessions, canonical badge, composition, expansion toggle
+- `GraphPage.test.tsx` — loading skeleton, title, stats counts, error state, node search, description
+- `SearchBox.test.tsx` — debounce, API calls, dropdown, navigation on selection, keyboard nav (arrows/Enter/Escape), ARIA combobox
+- `TaxonCard.test.tsx` — rendering, links, child count, image, italicization
+- `Skeleton.test.tsx` — SkeletonLine/Circle/Card, TaxonDetailSkeleton, GraphPageSkeleton
+- `ErrorBoundary.test.tsx` — renders children, fallback on error, custom fallback, retry recovery
+- `api.test.ts` — all API client functions (URL construction, error handling)
+- `external-links.test.ts` — Wikipedia, iNaturalist, eBird URL formatting
 
 **What's NOT tested:**
 - Full pipeline integration (ingest, neighbor building)
-- Frontend components (no Jest/RTL)
 - External API integration (OpenTree, NCBI, Wikipedia)
 - Database migrations
+- Graph rendering components (Cytoscape, Sigma.js — require canvas)
 
 ## Frontend Conventions
 
@@ -256,9 +320,12 @@ The following types must stay in sync across three layers:
 | `TaxonSummary` | `TaxonSummary` | `Taxon` |
 | `TaxonDetail` | `TaxonDetail` | `Taxon` + joins |
 | `ChildrenPage` | `ChildrenPage` | — |
+| `SearchPage` | `SearchPage` | — |
 | `SequenceOut` | `SequenceOut` | `Sequence` |
+| `SequencePage` | `SequencePage` | — |
 | `Node` / `GraphEdge` / `GraphResponse` | `GraphNode` / `GraphEdge` / `GraphResponse` | `Taxon` + `Edge` |
 | `NeighborOut` | `NeighborOut` | `Edge` + `Taxon` join |
+| (inline dict) | `StatsResponse` | Aggregation queries |
 
 **When adding a field:** Update all three: schema → route mapping → TypeScript type → API client → UI usage.
 
@@ -278,25 +345,23 @@ The following types must stay in sync across three layers:
 | Images | Fetched from Wikipedia |
 
 **Why so few sequences:**
-- NCBI query finds only ~167 matches for Aves species
+- Initial NCBI query found only ~167 matches (narrow COI gene annotations)
+- Broader search + genus fallback now available (re-run `ingest_ncbi --skip-existing`)
 - BOLD portal has been down since Feb 2026
-- TODO: Broader NCBI search (genus fallback, relaxed terms)
 
 ## Remaining Work (from TODO.md)
 
 ### High Priority
-- [ ] Expand NCBI ingestion — try genus-level queries, broader search terms
 - [ ] Retry BOLD portal when it comes back online
-- [ ] Frontend smoke tests
 
 ### Medium Priority
-- [ ] Run validate.py and document results
+- [ ] Run validate.py and document results (now with `--output` JSON export)
 - [ ] Production deployment config
 
 ### Phase 2
-- [ ] Make SCOPE_OTT_ROOT configurable for other clades
 - [ ] k-mer candidate filtering (FAISS/Annoy) for cross-family neighbors
 - [ ] Job queue (Celery/RQ) for background pipeline jobs
+- [ ] Precompute subtree graph exports for common entry points
 - [ ] Multi-marker support (16S, 18S)
 
 ## Architectural Principles
@@ -317,13 +382,18 @@ The following types must stay in sync across three layers:
 - **Search:** pg_trgm GIN index for fast ILIKE substring matching; prefix matches ranked first
 - **MI network:** In-memory cache with 5-minute TTL
 - **Neighbor queries:** Composite index (src_ott_id, distance) for indexed ORDER BY + LIMIT
+- **Rate limiting:** Sliding-window per-IP (100 req/min), /health excluded, X-RateLimit headers
+- **Graceful shutdown:** Lifespan context manager disposes connection pool on SIGTERM
+- **Readiness probe:** /health/ready checks DB connectivity and reports pool stats
+- **Security headers:** X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy
+- **Cache-Control:** MI network (5min), stats (1min) — reduces redundant API calls
 
 ## Known Gotchas
 
 - `pyproject.toml` requires Python >=3.11 (relaxed from 3.12 for compatibility)
 - Build backend is `hatchling.build` (not `hatchling.backends`)
 - Redis is configured but not used yet (reserved for caching)
-- CORS is wide open (`allow_origins=["*"]`) — tighten for production
+- CORS defaults to `["*"]` — set `CORS_ORIGINS` env var for production
 - `data/raw/` and `data/processed/` are gitignored — not in repo
 - Graph JSON exports exist at `apps/api/src/data/processed/graph/` but are gitignored
 - Sequence `quality` field is JSONB with `{"ambig": N}` format

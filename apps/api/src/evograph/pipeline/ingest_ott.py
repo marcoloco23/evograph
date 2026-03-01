@@ -1,10 +1,11 @@
 """Ingest OpenTree taxonomy for a configurable scope (default: Aves).
 
-Run as: python -m evograph.pipeline.ingest_ott
+Run as: python -m evograph.pipeline.ingest_ott [--scope Mammalia]
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import re
@@ -249,9 +250,20 @@ async def ingest(scope: str | None = None) -> None:
     logger.info("Ingested %d taxa for scope '%s'", count, scope)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Ingest OpenTree taxonomy")
+    parser.add_argument(
+        "--scope", type=str, default=None,
+        help="Root taxon name (default: from SCOPE_OTT_ROOT env or 'Aves')",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    asyncio.run(ingest())
+    asyncio.run(ingest(scope=args.scope))
+
+
+if __name__ == "__main__":
+    main()

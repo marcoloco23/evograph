@@ -25,6 +25,12 @@ export interface ChildrenPage {
   limit: number;
 }
 
+export interface SearchPage {
+  items: TaxonSummary[];
+  total: number;
+  limit: number;
+}
+
 export interface SequenceOut {
   id: string;
   ott_id: number;
@@ -35,6 +41,13 @@ export interface SequenceOut {
   length: number;
   is_canonical: boolean;
   retrieved_at: string | null;
+}
+
+export interface SequencePage {
+  items: SequenceOut[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface GraphNode {
@@ -62,4 +75,26 @@ export interface NeighborOut {
   rank: string;
   distance: number;
   mi_norm: number;
+}
+
+export interface StatsResponse {
+  taxa: {
+    total: number;
+    by_rank: Record<string, number>;
+  };
+  sequences: {
+    total: number;
+    by_source: Record<string, number>;
+    species_with_sequences: number;
+    species_total: number;
+    coverage_pct: number;
+  };
+  edges: {
+    total: number;
+    distance: {
+      min: number;
+      max: number;
+      avg: number;
+    } | null;
+  };
 }

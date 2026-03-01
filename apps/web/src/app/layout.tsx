@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,11 +24,12 @@ export default function RootLayout({
             <div style={linksStyle}>
               <Link href="/">Home</Link>
               <Link href="/graph">Graph</Link>
+              <Link href="/stats">Stats</Link>
             </div>
           </nav>
         </header>
         <main className="container" style={{ paddingTop: "2rem", paddingBottom: "3rem" }}>
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </body>
     </html>

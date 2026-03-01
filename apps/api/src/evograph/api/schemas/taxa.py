@@ -29,3 +29,9 @@ class ChildrenPage(BaseModel):
     total: int
     offset: int
     limit: int
+
+
+class SearchPage(BaseModel):
+    items: list[TaxonSummary]
+    total: int
+    limit: int

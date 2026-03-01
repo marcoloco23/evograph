@@ -129,11 +129,11 @@ export default function SequencesPage() {
     }
 
     Promise.all([getTaxon(ottId), getSequences(ottId)])
-      .then(([t, s]) => {
+      .then(([t, seqPage]) => {
         setTaxon(t);
-        setSequences(s);
+        setSequences(seqPage.items);
         // Auto-expand canonical sequence
-        const canonical = s.find((seq) => seq.is_canonical);
+        const canonical = seqPage.items.find((seq) => seq.is_canonical);
         if (canonical) setExpanded(canonical.id);
       })
       .catch((err: Error) => setError(err.message))
