@@ -10,13 +10,8 @@ services:
         fromDatabase:
           name: evograph-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: evograph-redis
-          property: connectionString
       - key: CORS_ORIGINS
-        value: '["https://evograph.vercel.app"]'
+        value: '["https://web-theta-rust-21.vercel.app"]'
       - key: LOG_FORMAT
         value: json
       - key: LOG_LEVEL
@@ -28,8 +23,3 @@ databases:
     databaseName: evograph
     postgresMajorVersion: "16"
     ipAllowList: []
-
-redis:
-  - name: evograph-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
