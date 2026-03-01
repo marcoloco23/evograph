@@ -1,0 +1,38 @@
+# Production override — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+#
+# Changes from dev:
+#   - API: multi-worker uvicorn (4 workers), non-root user, no hot-reload
+#   - Web: standalone Next.js build, non-root user, ~80% smaller image
+#   - No source volume mounts (immutable images)
+#   - Postgres password from env var (no default)
+
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+  api:
+    build:
+      context: ./apps/api
+      target: prod
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@db:5432/evograph
+      REDIS_URL: redis://redis:6379/0
+      SCOPE_OTT_ROOT: ${SCOPE_OTT_ROOT:-Aves}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["*"]}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    volumes: []  # Remove dev source mounts
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      target: prod
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped

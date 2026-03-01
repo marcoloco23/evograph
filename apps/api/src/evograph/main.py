@@ -8,10 +8,12 @@ from sqlalchemy import text
 
 from evograph.api.routes import graph, search, sequences, stats, taxa
 from evograph.db.session import SessionLocal, engine
+from evograph.logging_config import configure_logging
 from evograph.middleware.rate_limit import RateLimitMiddleware
 from evograph.middleware.request_logging import RequestLoggingMiddleware
 from evograph.settings import settings
 
+configure_logging()
 logger = logging.getLogger("evograph")
 
 

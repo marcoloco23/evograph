@@ -33,11 +33,12 @@ evograph/
 ├── apps/
 │   ├── api/                          # Python FastAPI backend
 │   │   ├── pyproject.toml            # Dependencies, pytest config, ruff config
-│   │   ├── Dockerfile                # Health check included
+│   │   ├── Dockerfile                # Multi-stage: dev (--reload) + prod (4 workers, non-root)
 │   │   ├── alembic.ini
 │   │   ├── src/evograph/
 │   │   │   ├── main.py               # FastAPI app, lifespan, CORS, rate limiting, logging, health
-│   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT, CORS_ORIGINS
+│   │   │   ├── settings.py           # DATABASE_URL, REDIS_URL, SCOPE_OTT_ROOT, CORS_ORIGINS, LOG_LEVEL, LOG_FORMAT
+│   │   │   ├── logging_config.py    # Structured logging (text/JSON format, configurable level)
 │   │   │   ├── db/
 │   │   │   │   ├── models.py         # Taxon, Sequence, Edge, NodeMedia
 │   │   │   │   ├── session.py        # engine, SessionLocal, get_db
@@ -67,7 +68,7 @@ evograph/
 │   │   │   └── utils/
 │   │   │       ├── alignment.py      # parasail global alignment wrapper
 │   │   │       └── fasta.py          # FASTA format parser
-│   │   └── tests/                    # 103 pytest tests
+│   │   └── tests/                    # 108 pytest tests
 │   │       ├── conftest.py           # MockDB, fixtures, factories
 │   │       ├── test_health.py
 │   │       ├── test_search.py
@@ -82,10 +83,11 @@ evograph/
 │   │       ├── test_stats.py         # Stats endpoint tests
 │   │       ├── test_validate.py      # Validation pipeline tests
 │   │       ├── test_rate_limit.py    # Rate limiting middleware tests
-│   │       └── test_request_logging.py # Request logging middleware tests
+│   │       ├── test_request_logging.py # Request logging middleware tests
+│   │       └── test_logging_config.py # Logging configuration tests
 │   └── web/                          # Next.js 15 + TypeScript frontend
 │       ├── package.json
-│       ├── Dockerfile                # Health check included
+│       ├── Dockerfile                # Multi-stage: dev (npm run dev) + prod (standalone build, non-root)
 │       ├── tsconfig.json             # Strict mode, @/* path alias
 │       ├── next.config.js            # output: "standalone"
 │       ├── jest.config.js            # Jest + next/jest setup
@@ -124,8 +126,9 @@ evograph/
 │               ├── StatsPage.test.tsx
 │               ├── api.test.ts
 │               └── external-links.test.ts
-├── docker-compose.yml                # postgres:16, redis:7, api, web (with health checks)
-├── Makefile                          # Pipeline orchestration commands
+├── docker-compose.yml                # Dev: postgres:16, redis:7, api (--reload), web (npm run dev)
+├── docker-compose.prod.yml          # Prod override: multi-worker, non-root, no source mounts
+├── Makefile                          # Pipeline + deployment commands (up, up-prod)
 ├── .github/workflows/ci.yml         # Lint, test, typecheck, build
 ├── .env.example
 ├── TODO.md                           # Tracked tasks with completion status
@@ -230,7 +233,7 @@ make up                   # docker compose up --build
 make down                 # docker compose down
 make migrate              # alembic upgrade head
 
-# API tests (103 tests)
+# API tests (108 tests)
 cd apps/api && python -m pytest tests/ -v
 
 # Frontend tests (71 tests)
@@ -254,11 +257,14 @@ DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/evograph
 REDIS_URL=redis://redis:6379/0
 SCOPE_OTT_ROOT=Aves
 NEXT_PUBLIC_API_BASE=http://localhost:8000
+CORS_ORIGINS=["*"]                    # JSON array of allowed origins
+LOG_LEVEL=info                        # debug, info, warning, error, critical
+LOG_FORMAT=text                       # text (dev) or json (production)
 ```
 
 ## Testing Strategy
 
-**Current: 174 tests passing** (103 API + 71 frontend)
+**Current: 179 tests passing** (108 API + 71 frontend)
 
 **API tests** (`apps/api/tests/`) — use `MockDB` with FastAPI dependency override, no real database:
 - `conftest.py`: Mock factories (`_make_taxon`, `_make_sequence`, `_make_edge`, `_make_media`), `MockQuery` (chainable filter/limit/order_by/scalar/exists/select_from), `MockDB` (registry by model type + execute for CTEs)
@@ -271,6 +277,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 - Validation pipeline (12 tests: walk_to_rank, report structure, outlier detection)
 - Stats endpoint (2 tests: structure, empty database)
 - Rate limiting middleware (5 tests: headers, decrement, 429, exclusions)
+- Logging configuration (5 tests: JSON formatter, text/JSON/debug configuration)
 
 **Frontend tests** (`apps/web/src/__tests__/`) — Jest + React Testing Library:
 - `HomePage.test.tsx` — heading, search box, quick links, rank badges

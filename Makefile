@@ -1,10 +1,16 @@
-.PHONY: up down migrate ingest_ott ingest_ncbi ingest_bold canonical neighbors export images validate pipeline
+.PHONY: up down up-prod down-prod migrate ingest_ott ingest_ncbi ingest_bold canonical neighbors export images validate pipeline
 
 up:
 	docker compose up --build
 
 down:
 	docker compose down
+
+up-prod:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+
+down-prod:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 
 migrate:
 	docker compose exec api alembic upgrade head
