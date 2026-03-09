@@ -37,12 +37,17 @@ class OpenTreeClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def taxon_info(self, ott_id: int) -> dict:
+    async def taxon_info(
+        self, ott_id: int, include_children: bool = False
+    ) -> dict:
         """Get info about a single taxon."""
+        payload: dict = {"ott_id": ott_id}
+        if include_children:
+            payload["include_children"] = True
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 f"{self.base_url}/taxonomy/taxon_info",
-                json={"ott_id": ott_id},
+                json=payload,
             )
             resp.raise_for_status()
             return resp.json()
@@ -53,7 +58,7 @@ class OpenTreeClient:
         Returns list of child dicts with 'ott_id', 'name', 'rank' keys.
         Uses taxon_info which includes children in the response.
         """
-        info = await self.taxon_info(ott_id)
+        info = await self.taxon_info(ott_id, include_children=True)
         children = info.get("children", [])
         return [
             {

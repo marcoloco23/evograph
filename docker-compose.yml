@@ -32,7 +32,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       SCOPE_OTT_ROOT: ${SCOPE_OTT_ROOT:-Aves}
       NCBI_API_KEY: ${NCBI_API_KEY:-}
-    ports: ["8000:8000"]
+    ports: ["8001:8000"]
     depends_on:
       db:
         condition: service_healthy
@@ -66,8 +66,8 @@ services:
       context: ./apps/web
       target: dev
     environment:
-      NEXT_PUBLIC_API_BASE: http://localhost:8000
-    ports: ["3000:3000"]
+      NEXT_PUBLIC_API_BASE: http://localhost:8001
+    ports: ["3001:3000"]
     depends_on: [api]
 
 volumes:
