@@ -118,32 +118,53 @@ def get_subtree_graph(
 @router.get("/graph/mi-network", response_model=GraphResponse)
 def get_mi_network(
     response: Response,
+    limit: int = Query(5000, ge=100, le=50000, description="Max edges to return (closest first)"),
     db: Session = Depends(get_db),
 ) -> GraphResponse:
-    """Get the full MI similarity network: all species with MI edges.
+    """Get the MI similarity network: species connected by MI edges.
 
-    Returns all taxa that have at least one MI edge, plus all MI edges
-    between them (deduplicated to undirected). Includes taxonomy edges
-    connecting species to their parent genus.
+    Returns up to `limit` edges (sorted by distance, closest first),
+    deduplicated to undirected. Includes taxonomy edges connecting
+    species to their parent genus.
 
     Results are cached in-memory for 5 minutes.
     """
     global _mi_network_cache, _mi_network_cache_time
     now = time.monotonic()
-    if _mi_network_cache is not None and (now - _mi_network_cache_time) < _MI_NETWORK_TTL:
+    cache_key = f"mi_network_{limit}"
+    if (
+        _mi_network_cache is not None
+        and (now - _mi_network_cache_time) < _MI_NETWORK_TTL
+        and getattr(_mi_network_cache, "_cache_key", None) == cache_key
+    ):
         response.headers["Cache-Control"] = "public, max-age=300"
         return _mi_network_cache
 
-    # Get all MI edges
-    all_edges = db.query(Edge).all()
-    if not all_edges:
+    # Use raw SQL with deduplication and limit for efficiency.
+    # Deduplicate directed edges to undirected by keeping the pair with
+    # smaller src_ott_id first, taking the minimum distance.
+    rows = db.execute(
+        text("""
+            SELECT DISTINCT ON (LEAST(src_ott_id, dst_ott_id), GREATEST(src_ott_id, dst_ott_id))
+                LEAST(src_ott_id, dst_ott_id) AS src,
+                GREATEST(src_ott_id, dst_ott_id) AS dst,
+                distance, mi_norm, align_len
+            FROM edges
+            ORDER BY LEAST(src_ott_id, dst_ott_id), GREATEST(src_ott_id, dst_ott_id), distance
+        """),
+    ).fetchall()
+
+    # Sort by distance and take top N
+    rows = sorted(rows, key=lambda r: r.distance)[:limit]
+
+    if not rows:
         return GraphResponse(nodes=[], edges=[])
 
     # Collect all involved OTT IDs
     ott_ids: set[int] = set()
-    for e in all_edges:
-        ott_ids.add(e.src_ott_id)
-        ott_ids.add(e.dst_ott_id)
+    for r in rows:
+        ott_ids.add(r.src)
+        ott_ids.add(r.dst)
 
     # Fetch taxa in one query
     taxa = db.query(Taxon).filter(Taxon.ott_id.in_(ott_ids)).all()
@@ -153,21 +174,13 @@ def get_mi_network(
     media_rows = db.query(NodeMedia).filter(NodeMedia.ott_id.in_(ott_ids)).all()
     media_map = {m.ott_id: m.image_url for m in media_rows}
 
-    # Build MI edges — deduplicate to undirected (keep the one with lower distance
-    # when both A->B and B->A exist, otherwise keep the single direction)
-    seen_pairs: dict[tuple[int, int], tuple[float, float, int]] = {}
-    for e in all_edges:
-        pair = (min(e.src_ott_id, e.dst_ott_id), max(e.src_ott_id, e.dst_ott_id))
-        if pair not in seen_pairs or e.distance < seen_pairs[pair][0]:
-            seen_pairs[pair] = (e.distance, e.mi_norm, e.align_len)
-
     mi_edges = [
-        GraphEdge(src=a, dst=b, kind="mi", distance=dist, mi_norm=nmi, align_len=alen)
-        for (a, b), (dist, nmi, alen) in seen_pairs.items()
+        GraphEdge(src=r.src, dst=r.dst, kind="mi", distance=r.distance,
+                  mi_norm=r.mi_norm, align_len=r.align_len)
+        for r in rows
     ]
 
     # Add taxonomy edges: connect species to their parent genus/family
-    # Batch-fetch all parent taxa in one query (no N+1)
     parent_ids = {
         t.parent_ott_id
         for t in taxa_map.values()
@@ -197,6 +210,7 @@ def get_mi_network(
     ]
 
     result = GraphResponse(nodes=nodes, edges=mi_edges + taxonomy_edges)
+    result._cache_key = cache_key  # type: ignore[attr-defined]
     _mi_network_cache = result
     _mi_network_cache_time = time.monotonic()
 
