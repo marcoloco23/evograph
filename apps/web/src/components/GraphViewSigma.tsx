@@ -120,25 +120,29 @@ function applyLayout(g: Graph, mode: "force" | "radial"): void {
     return;
   }
 
-  // Random initial positions
+  const nodeCount = g.order;
+
+  // Spread initial positions proportional to graph size
+  const spread = Math.max(500, nodeCount * 2);
   g.forEachNode((node) => {
-    g.setNodeAttribute(node, "x", (Math.random() - 0.5) * 200);
-    g.setNodeAttribute(node, "y", (Math.random() - 0.5) * 200);
+    g.setNodeAttribute(node, "x", (Math.random() - 0.5) * spread);
+    g.setNodeAttribute(node, "y", (Math.random() - 0.5) * spread);
   });
 
-  // Fast layout: 100 iterations is plenty for 200 nodes
+  // Scale layout parameters with graph size so large networks spread out
   const inferred = forceAtlas2.inferSettings(g);
+  const iterations = nodeCount > 300 ? 200 : 100;
   forceAtlas2.assign(g, {
-    iterations: 100,
+    iterations,
     settings: {
       ...inferred,
       linLogMode: true,
-      scalingRatio: 40,
-      gravity: 0.08,
+      scalingRatio: nodeCount > 300 ? 120 : 40,
+      gravity: nodeCount > 300 ? 0.02 : 0.08,
       strongGravityMode: false,
       barnesHutOptimize: true,
-      adjustSizes: false,
-      slowDown: 1,
+      adjustSizes: true,
+      slowDown: 2,
     },
   });
 }
