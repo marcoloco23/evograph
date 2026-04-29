@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
-from evograph.api.routes import graph, jobs, search, sequences, stats, taxa
+from evograph.api.routes import graph, jobs, search, sequences, species, stats, taxa
 from evograph.db.session import SessionLocal, engine
 from evograph.logging_config import configure_logging
 from evograph.middleware.rate_limit import RateLimitMiddleware
@@ -62,6 +62,7 @@ app.include_router(search.router, prefix="/v1")
 app.include_router(taxa.router, prefix="/v1")
 app.include_router(graph.router, prefix="/v1")
 app.include_router(sequences.router, prefix="/v1")
+app.include_router(species.router, prefix="/v1")
 app.include_router(stats.router, prefix="/v1")
 app.include_router(jobs.router, prefix="/v1")
 

@@ -1,7 +1,7 @@
 """Taxon detail endpoint with paginated children."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from evograph.api.schemas.taxa import ChildrenPage, TaxonDetail, TaxonSummary
@@ -11,6 +11,20 @@ from evograph.db.session import get_db
 router = APIRouter(tags=["taxa"])
 
 _INLINE_CHILDREN_LIMIT = 100
+
+# Higher-rank children appear first so navigating the tree starts with the
+# most useful groupings (orders, families) rather than a random alphabetical
+# mix of species and subspecies.
+_RANK_SORT_ORDER = case(
+    (Taxon.rank == "class", 0),
+    (Taxon.rank == "order", 1),
+    (Taxon.rank == "family", 2),
+    (Taxon.rank == "subfamily", 3),
+    (Taxon.rank == "genus", 4),
+    (Taxon.rank == "species", 5),
+    (Taxon.rank == "subspecies", 6),
+    else_=7,
+)
 
 
 def _fetch_lineage(db: Session, ott_id: int) -> list[TaxonSummary]:
@@ -62,10 +76,11 @@ def get_taxon(
     ) or 0
 
     # Get children (limited for inline display)
+    # Sort by rank importance so orders/families appear before species/subspecies
     children = (
         db.query(Taxon)
         .filter(Taxon.parent_ott_id == ott_id)
-        .order_by(Taxon.name)
+        .order_by(_RANK_SORT_ORDER, Taxon.name)
         .limit(_INLINE_CHILDREN_LIMIT)
         .all()
     )
@@ -159,7 +174,7 @@ def get_children(
     children = (
         db.query(Taxon)
         .filter(Taxon.parent_ott_id == ott_id)
-        .order_by(Taxon.name)
+        .order_by(_RANK_SORT_ORDER, Taxon.name)
         .offset(offset)
         .limit(limit)
         .all()

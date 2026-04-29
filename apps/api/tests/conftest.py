@@ -113,6 +113,16 @@ class MockQuery:
     def select_from(self, *args, **kwargs):
         return self
 
+    def correlate(self, *args, **kwargs):
+        return self
+
+    def scalar_subquery(self):
+        return self
+
+    def desc(self):
+        """Support ORDER BY ... DESC on scalar subqueries."""
+        return self
+
     def exists(self):
         """Return an exists clause marker for use in outer query."""
         return MockExistsClause()

@@ -33,6 +33,25 @@ export interface SearchPage {
   limit: number;
 }
 
+export interface SpeciesSummary {
+  ott_id: number;
+  name: string;
+  rank: string;
+  image_url: string | null;
+  is_extinct?: boolean | null;
+  has_sequence: boolean;
+  edge_count: number;
+  family_name: string | null;
+  order_name: string | null;
+}
+
+export interface SpeciesBrowsePage {
+  items: SpeciesSummary[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface SequenceOut {
   id: string;
   ott_id: number;

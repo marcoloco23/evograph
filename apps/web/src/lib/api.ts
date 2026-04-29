@@ -1,4 +1,4 @@
-import type { TaxonDetail, SearchPage, ChildrenPage, SequencePage, GraphResponse, NeighborOut, StatsResponse } from "./types";
+import type { TaxonDetail, SearchPage, ChildrenPage, SequencePage, GraphResponse, NeighborOut, StatsResponse, SpeciesBrowsePage } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -42,4 +42,27 @@ export function getSequences(ottId: number, offset = 0, limit = 50) {
 
 export function getStats() {
   return getJSON<StatsResponse>(`/v1/stats`);
+}
+
+export interface BrowseSpeciesParams {
+  offset?: number;
+  limit?: number;
+  has_sequences?: boolean;
+  has_edges?: boolean;
+  is_extinct?: boolean;
+  clade?: number;
+  sort?: "name" | "edges";
+}
+
+export function browseSpecies(params: BrowseSpeciesParams = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.offset !== undefined) searchParams.set("offset", String(params.offset));
+  if (params.limit !== undefined) searchParams.set("limit", String(params.limit));
+  if (params.has_sequences !== undefined) searchParams.set("has_sequences", String(params.has_sequences));
+  if (params.has_edges !== undefined) searchParams.set("has_edges", String(params.has_edges));
+  if (params.is_extinct !== undefined) searchParams.set("is_extinct", String(params.is_extinct));
+  if (params.clade !== undefined) searchParams.set("clade", String(params.clade));
+  if (params.sort !== undefined) searchParams.set("sort", params.sort);
+  const qs = searchParams.toString();
+  return getJSON<SpeciesBrowsePage>(`/v1/species${qs ? `?${qs}` : ""}`);
 }
